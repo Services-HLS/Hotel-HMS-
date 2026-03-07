@@ -15,30 +15,26 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import {
-    Calendar,
+    Check,
+    AlertCircle,
+    Filter,
+    Bed,
+    CalendarCheck,
+    DollarSign,
+    Users,
+    RefreshCw,
     Download,
+    Search,
+    X,
+    IndianRupee,
+    PartyPopper,
     FileText,
     PieChart,
     BarChart3,
-    Users,
-    Bed,
-    DollarSign,
     TrendingUp,
-    Filter,
-    RefreshCw,
-    Printer,
-    CalendarDays,
-    Wallet,
-    CreditCard,
-    IndianRupee,
     Shield,
-    PartyPopper,
-    CalendarCheck,
-    Eye,
-    EyeOff,
-    Search,
-    X,
-    Check
+    Printer,
+    Layout as LayoutIcon
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -399,6 +395,8 @@ const Reports = () => {
                     params.append('year', selectedYear.toString());
                     break;
             }
+
+            params.append('functionHallEnabled', functionHallEnabled.toString());
 
             url += params.toString();
 
@@ -887,7 +885,12 @@ const Reports = () => {
 
         return (
             <div className="space-y-6">
-
+                {!functionHallEnabled && (
+                    <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-3 py-2 rounded-md text-xs flex items-center gap-2 mb-2">
+                        <AlertCircle className="h-4 w-4" />
+                        <span>Function Hall revenue is excluded. Enable it in Overview to include it in Daily Sales.</span>
+                    </div>
+                )}
                 {/* Summary Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                     <Card><CardContent className="p-3">
@@ -900,15 +903,17 @@ const Reports = () => {
                         <div className="text-lg font-bold">{filteredAdvanceBookings.length} bookings</div>
                         <div className="text-sm text-blue-600 font-semibold">{fmt(advanceTotal)}</div>
                     </CardContent></Card>
-                    <Card><CardContent className="p-3">
-                        <div className="text-xs text-muted-foreground">Function Hall</div>
-                        <div className="text-lg font-bold">{filteredFunctionBookings.length} bookings</div>
-                        <div className="text-sm text-purple-600 font-semibold">{fmt(functionTotal)}</div>
-                    </CardContent></Card>
+                    {functionHallEnabled && (
+                        <Card><CardContent className="p-3">
+                            <div className="text-xs text-muted-foreground">Function Hall</div>
+                            <div className="text-lg font-bold">{filteredFunctionBookings.length} bookings</div>
+                            <div className="text-sm text-purple-600 font-semibold">{fmt(functionTotal)}</div>
+                        </CardContent></Card>
+                    )}
                     <Card><CardContent className="p-3">
                         <div className="text-xs text-muted-foreground">Combine Day Sales</div>
-                        <div className="text-lg font-bold">{filteredBookings.length + filteredAdvanceBookings.length + filteredFunctionBookings.length} total</div>
-                        <div className="text-sm text-primary font-bold">{fmt(bookingTotal + advanceTotal + functionTotal)}</div>
+                        <div className="text-lg font-bold">{filteredBookings.length + filteredAdvanceBookings.length + (functionHallEnabled ? filteredFunctionBookings.length : 0)} total</div>
+                        <div className="text-sm text-primary font-bold">{fmt(bookingTotal + advanceTotal + (functionHallEnabled ? functionTotal : 0))}</div>
                     </CardContent></Card>
                 </div>
 
@@ -1133,127 +1138,134 @@ const Reports = () => {
                     </div>
                 </div>
 
-                {/* TABLE 3: Function Hall Bookings */}
-                <div className="space-y-2 mt-4">
-                    <h3 className="font-semibold text-sm mb-2 flex items-center gap-2">
-                        <PartyPopper className="h-4 w-4 text-purple-600" />
-                        Function Hall Bookings
-                        <Badge variant="outline" className="text-xs">{getFilteredData(functionBookings).length} records</Badge>
-                    </h3>
-                    <div className="overflow-x-auto rounded-md border text-[10px]">
-                        <Table>
-                            <TableHeader>
-                                <TableRow className="bg-purple-50">
-                                    <TableHead>
-                                        <div className="flex items-center gap-1">
-                                            Event Name
-                                            <ColumnFilter columnId="event_name" label="Event Name" data={functionBookings} />
-                                        </div>
-                                    </TableHead>
-                                    <TableHead>
-                                        <div className="flex items-center gap-1">
-                                            Room
-                                            <ColumnFilter columnId="room_number" label="Room" data={functionBookings} />
-                                        </div>
-                                    </TableHead>
-                                    <TableHead>
-                                        <div className="flex items-center gap-1">
-                                            Customer
-                                            <ColumnFilter columnId="customer_name" label="Customer" data={functionBookings} />
-                                        </div>
-                                    </TableHead>
-                                    <TableHead>
-                                        <div className="flex items-center gap-1">
-                                            Mobile
-                                            <ColumnFilter columnId="mobile_no" label="Mobile" data={functionBookings} />
-                                        </div>
-                                    </TableHead>
-                                    <TableHead>
-                                        <div className="flex items-center gap-1">
-                                            Event Date
-                                            <ColumnFilter columnId="booking_date" label="Event Date" data={functionBookings} />
-                                        </div>
-                                    </TableHead>
-                                    <TableHead>
-                                        <div className="flex items-center gap-1">
-                                            Payment
-                                            <ColumnFilter columnId="payment_method" label="Payment" data={functionBookings} />
-                                        </div>
-                                    </TableHead>
-                                    <TableHead>
-                                        <div className="flex items-center gap-1">
-                                            Status
-                                            <ColumnFilter columnId="payment_status" label="Status" data={functionBookings} />
-                                        </div>
-                                    </TableHead>
-                                    <TableHead className="text-right">
-                                        <div className="flex items-center justify-end gap-1">
-                                            Total Amount
-                                            <ColumnFilter columnId="total_amount" label="Total Amount" data={functionBookings} />
-                                        </div>
-                                    </TableHead>
-                                    <TableHead className="text-right">
-                                        <div className="flex items-center justify-end gap-1">
-                                            Advance Paid
-                                            <ColumnFilter columnId="advance_paid" label="Advance Paid" data={functionBookings} />
-                                        </div>
-                                    </TableHead>
-                                    <TableHead className="text-right">
-                                        <div className="flex items-center justify-end gap-1">
-                                            Balance Due
-                                            <ColumnFilter columnId="balance_due" label="Balance Due" data={functionBookings} />
-                                        </div>
-                                    </TableHead>
-                                    <TableHead>
-                                        <div className="flex items-center gap-1">
-                                            Rooms
-                                            <ColumnFilter columnId="total_rooms_booked" label="Rooms" data={functionBookings} />
-                                        </div>
-                                    </TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {getFilteredData(functionBookings).map((row: any, i: number) => (
-                                    <TableRow key={i}>
-                                        <TableCell className="text-xs">{row.event_name || '-'}</TableCell>
-                                        <TableCell className="text-xs font-medium">{row.room_number || 'N/A'}</TableCell>
-                                        <TableCell className="text-xs">{row.customer_name || 'N/A'}</TableCell>
-                                        <TableCell className="text-xs">{row.mobile_no || '-'}</TableCell>
-                                        <TableCell className="text-xs">{fmtDate(row.booking_date)}</TableCell>
-                                        <TableCell className="text-xs">
-                                            <Badge variant="outline" className="text-xs capitalize">{row.payment_method || '-'}</Badge>
-                                        </TableCell>
-                                        <TableCell className="text-xs">
-                                            <Badge className={`text-xs ${row.payment_status === 'completed' ? 'bg-green-100 text-green-800' : row.payment_status === 'partial' ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-100 text-blue-800'}`}>
-                                                {row.payment_status || '-'}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell className="text-xs text-right font-medium">{fmt(row.total_amount)}</TableCell>
-                                        <TableCell className="text-xs text-right font-medium text-green-600">{fmt(row.advance_paid)}</TableCell>
-                                        <TableCell className="text-xs text-right font-medium text-red-600">{fmt(row.balance_due)}</TableCell>
-                                        <TableCell className="text-xs">
-                                            {row.has_room_bookings ? (
-                                                <Badge variant="outline" className="bg-purple-100 text-purple-800 border-purple-200">
-                                                    Yes ({row.total_rooms_booked || 0})
-                                                </Badge>
-                                            ) : (
-                                                <span className="text-muted-foreground">No</span>
-                                            )}
-                                        </TableCell>
+                {/* 3. Function Bookings */}
+                {functionHallEnabled && (
+                    <div className="space-y-3 pt-4 border-t-2 border-dashed border-purple-200">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <PartyPopper className="h-5 w-5 text-purple-600" />
+                                <h3 className="font-bold text-gray-800">Function Hall Bookings</h3>
+                            </div>
+                            <Badge variant="outline" className="bg-purple-100 text-purple-800 border-purple-200">
+                                {functionBookings.length} Bookings
+                            </Badge>
+                        </div>
+
+                        <div className="overflow-x-auto rounded-md border border-purple-100">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow className="bg-purple-50">
+                                        <TableHead>
+                                            <div className="flex items-center gap-1">
+                                                Event Name
+                                                <ColumnFilter columnId="event_name" label="Event Name" data={functionBookings} />
+                                            </div>
+                                        </TableHead>
+                                        <TableHead>
+                                            <div className="flex items-center gap-1">
+                                                Room
+                                                <ColumnFilter columnId="room_number" label="Room" data={functionBookings} />
+                                            </div>
+                                        </TableHead>
+                                        <TableHead>
+                                            <div className="flex items-center gap-1">
+                                                Customer
+                                                <ColumnFilter columnId="customer_name" label="Customer" data={functionBookings} />
+                                            </div>
+                                        </TableHead>
+                                        <TableHead>
+                                            <div className="flex items-center gap-1">
+                                                Mobile
+                                                <ColumnFilter columnId="mobile_no" label="Mobile" data={functionBookings} />
+                                            </div>
+                                        </TableHead>
+                                        <TableHead>
+                                            <div className="flex items-center gap-1">
+                                                Event Date
+                                                <ColumnFilter columnId="booking_date" label="Event Date" data={functionBookings} />
+                                            </div>
+                                        </TableHead>
+                                        <TableHead>
+                                            <div className="flex items-center gap-1">
+                                                Payment
+                                                <ColumnFilter columnId="payment_method" label="Payment" data={functionBookings} />
+                                            </div>
+                                        </TableHead>
+                                        <TableHead>
+                                            <div className="flex items-center gap-1">
+                                                Status
+                                                <ColumnFilter columnId="payment_status" label="Status" data={functionBookings} />
+                                            </div>
+                                        </TableHead>
+                                        <TableHead className="text-right">
+                                            <div className="flex items-center justify-end gap-1">
+                                                Total Amount
+                                                <ColumnFilter columnId="total_amount" label="Total Amount" data={functionBookings} />
+                                            </div>
+                                        </TableHead>
+                                        <TableHead className="text-right">
+                                            <div className="flex items-center justify-end gap-1">
+                                                Advance Paid
+                                                <ColumnFilter columnId="advance_paid" label="Advance Paid" data={functionBookings} />
+                                            </div>
+                                        </TableHead>
+                                        <TableHead className="text-right">
+                                            <div className="flex items-center justify-end gap-1">
+                                                Balance Due
+                                                <ColumnFilter columnId="balance_due" label="Balance Due" data={functionBookings} />
+                                            </div>
+                                        </TableHead>
+                                        <TableHead>
+                                            <div className="flex items-center gap-1">
+                                                Rooms
+                                                <ColumnFilter columnId="total_rooms_booked" label="Rooms" data={functionBookings} />
+                                            </div>
+                                        </TableHead>
                                     </TableRow>
-                                ))}
-                                {/* Totals row */}
-                                <TableRow className="bg-purple-50 font-bold">
-                                    <TableCell colSpan={7} className="text-xs text-right">Totals</TableCell>
-                                    <TableCell className="text-xs text-right text-purple-700 font-bold">{fmt(functionTotal)}</TableCell>
-                                    <TableCell className="text-xs text-right text-green-700 font-bold">{fmt(functionTotalAdvance)}</TableCell>
-                                    <TableCell className="text-xs text-right text-red-700 font-bold">{fmt(functionTotalBalance)}</TableCell>
-                                    <TableCell></TableCell>
-                                </TableRow>
-                            </TableBody>
-                        </Table>
+                                </TableHeader>
+                                <TableBody>
+                                    {getFilteredData(functionBookings).map((row: any, i: number) => (
+                                        <TableRow key={i}>
+                                            <TableCell className="text-xs">{row.event_name || '-'}</TableCell>
+                                            <TableCell className="text-xs font-medium">{row.room_number || 'N/A'}</TableCell>
+                                            <TableCell className="text-xs">{row.customer_name || 'N/A'}</TableCell>
+                                            <TableCell className="text-xs">{row.mobile_no || '-'}</TableCell>
+                                            <TableCell className="text-xs">{fmtDate(row.booking_date)}</TableCell>
+                                            <TableCell className="text-xs">
+                                                <Badge variant="outline" className="text-xs capitalize">{row.payment_method || '-'}</Badge>
+                                            </TableCell>
+                                            <TableCell className="text-xs">
+                                                <Badge className={`text-xs ${row.payment_status === 'completed' ? 'bg-green-100 text-green-800' : row.payment_status === 'partial' ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-100 text-blue-800'}`}>
+                                                    {row.payment_status || '-'}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="text-xs text-right font-medium">{fmt(row.total_amount)}</TableCell>
+                                            <TableCell className="text-xs text-right font-medium text-green-600">{fmt(row.advance_paid)}</TableCell>
+                                            <TableCell className="text-xs text-right font-medium text-red-600">{fmt(row.balance_due)}</TableCell>
+                                            <TableCell className="text-xs">
+                                                {row.has_room_bookings ? (
+                                                    <Badge variant="outline" className="bg-purple-100 text-purple-800 border-purple-200">
+                                                        Yes ({row.total_rooms_booked || 0})
+                                                    </Badge>
+                                                ) : (
+                                                    <span className="text-muted-foreground">No</span>
+                                                )}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                    {/* Totals row */}
+                                    <TableRow className="bg-purple-50 font-bold">
+                                        <TableCell colSpan={7} className="text-xs text-right">Totals</TableCell>
+                                        <TableCell className="text-xs text-right text-purple-700 font-bold">{fmt(functionTotal)}</TableCell>
+                                        <TableCell className="text-xs text-right text-green-700 font-bold">{fmt(functionTotalAdvance)}</TableCell>
+                                        <TableCell className="text-xs text-right text-red-700 font-bold">{fmt(functionTotalBalance)}</TableCell>
+                                        <TableCell></TableCell>
+                                    </TableRow>
+                                </TableBody>
+                            </Table>
+                        </div>
                     </div>
-                </div>
+                )}
             </div>
         );
     };
@@ -1265,7 +1277,7 @@ const Reports = () => {
         return Object.keys(sample)
             .filter(key => key !== 'occupancy_percentage')
             .map((key) => (
-                <TableHead key={key} className="font-bold">
+                <TableHead key={key} className={`font-bold ${!functionHallEnabled && key === 'function_revenue' ? 'opacity-50 grayscale' : ''}`}>
                     <div className="flex items-center gap-1">
                         {key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
                         <ColumnFilter 
@@ -1283,7 +1295,12 @@ const Reports = () => {
             return (
                 <TableRow key={index}>
                     {keys.map((key, idx) => {
-                        const value = row[key];
+                        let value = row[key];
+
+                        // Respect Function Hall toggle for P&L Summary
+                        if (activeTab === 'pnl_summary' && key === 'function_revenue' && !functionHallEnabled) {
+                            value = 0;
+                        }
 
                         // Check if this is a date field
                         const isDateField = (key.toLowerCase().includes('date') ||
@@ -1342,11 +1359,11 @@ const Reports = () => {
                                         key === 'net_salary' || key === 'salary_per_month' || key === 'total_amount' ||
                                         key === 'subtotal' || key === 'service_charge' || key === 'catering_charges' ||
                                         key === 'decoration_charges' || key === 'other_charges' || key === 'advance_paid' ||
-                                        key === 'room_cost' || key === 'gst' ?
+                                        key === 'room_cost' || key === 'gst' || key === 'function_revenue' ?
                                         `₹${value.toFixed(2)}` : value.toFixed(2);
 
                             return (
-                                <TableCell key={idx}>
+                                <TableCell key={idx} className={!functionHallEnabled && key === 'function_revenue' ? 'opacity-50 grayscale' : ''}>
                                     {formattedValue}
                                 </TableCell>
                             );
@@ -1355,7 +1372,7 @@ const Reports = () => {
 
                         // Default string value
                         return (
-                            <TableCell key={idx}>
+                            <TableCell key={idx} className={!functionHallEnabled && key === 'function_revenue' ? 'opacity-50 grayscale' : ''}>
                                 {String(value || '')}
                             </TableCell>
                         );
@@ -1593,22 +1610,21 @@ const Reports = () => {
                                     <span>Police Report</span>
                                 </TabsTrigger>
 
-                                {functionHallEnabled && (
-                                    <TabsTrigger
-                                        value="function_room"
-                                        className={`
+                                 <TabsTrigger
+                                    value="function_room"
+                                    disabled={!functionHallEnabled}
+                                    className={`
         flex items-center gap-1.5 text-xs h-9 px-3 whitespace-nowrap
     data-[state=active]:bg-emerald-600 data-[state=active]:text-white
     data-[state=active]:shadow-md data-[state=active]:font-medium
     data-[state=inactive]:bg-gray-100 data-[state=inactive]:text-gray-700
     hover:bg-gray-200 transition-all duration-200
-    rounded-md
+    rounded-md ${!functionHallEnabled ? 'opacity-50 cursor-not-allowed' : ''}
         `}
-                                    >
-                                        <PartyPopper className="h-3.5 w-3.5" />
-                                        <span>Function Room</span>
-                                    </TabsTrigger>
-                                )}
+                                >
+                                    <PartyPopper className="h-3.5 w-3.5" />
+                                    <span>Function Room</span>
+                                </TabsTrigger>
                             </TabsList>
                         </div>
                     </div>
@@ -1833,17 +1849,25 @@ const Reports = () => {
                                                 No data found for the selected criteria
                                             </div>
                                         ) : (
-                                            <div className="overflow-x-auto">
-                                                <Table>
-                                                    <TableHeader>
-                                                        <TableRow>
-                                                            {renderTableColumns()}
-                                                        </TableRow>
-                                                    </TableHeader>
-                                                    <TableBody>
-                                                        {renderTableRows()}
-                                                    </TableBody>
-                                                </Table>
+                                            <div className="space-y-4">
+                                                {activeTab === 'pnl_summary' && !functionHallEnabled && (
+                                                    <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-3 py-2 rounded-md text-xs flex items-center gap-2 mb-2">
+                                                        <AlertCircle className="h-4 w-4" />
+                                                        <span>Function Hall revenue is excluded. Enable it in Overview to include it in P&L.</span>
+                                                    </div>
+                                                )}
+                                                <div className="overflow-x-auto">
+                                                    <Table>
+                                                        <TableHeader>
+                                                            <TableRow>
+                                                                {renderTableColumns()}
+                                                            </TableRow>
+                                                        </TableHeader>
+                                                        <TableBody>
+                                                            {renderTableRows()}
+                                                        </TableBody>
+                                                    </Table>
+                                                </div>
                                             </div>
                                         )
                                     )}

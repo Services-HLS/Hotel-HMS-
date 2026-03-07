@@ -248,6 +248,49 @@ const Layout = ({ children }: LayoutProps) => {
     };
   }, []);
 
+
+  // ========== AUTO-LOGOUT ON INACTIVITY (30 MINS) ==========
+  useEffect(() => {
+    // 30 minutes in milliseconds
+    const INACTIVITY_TIMEOUT = 30 * 60 * 1000;
+    let timeoutId: NodeJS.Timeout;
+
+    const resetTimer = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        console.log('🕒 Inactivity timeout reached (30 mins). Logging out...');
+        handleLogout();
+      }, INACTIVITY_TIMEOUT);
+    };
+
+    // Events that count as activity
+    const activityEvents = [
+      'mousedown',
+      'mousemove',
+      'keypress',
+      'scroll',
+      'touchstart',
+      'click'
+    ];
+
+    // Initialize timer
+    resetTimer();
+
+    // Add listeners
+    activityEvents.forEach(event => {
+      window.addEventListener(event, resetTimer);
+    });
+
+    // Cleanup
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      activityEvents.forEach(event => {
+        window.removeEventListener(event, resetTimer);
+      });
+    };
+  }, [navigate]); // navigate is stable, but adding it for completeness
+
+
   // Main navigation items (visible to all logged-in users with permissions)
   // const mainNavItems = [
   //   {
