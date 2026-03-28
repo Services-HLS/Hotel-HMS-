@@ -270,6 +270,134 @@ const collectionController = {
     }
   },
 
+  // Bulk Handover (Total Balance)
+  bulkHandover: async (req, res) => {
+    try {
+      const hotelId = req.user.hotel_id;
+      const userId = req.user.userId;
+      const { amount, handed_to, handover_type, remarks } = req.body;
+
+      console.log("💰 [Controller] Bulk handover requested:", {
+        hotelId,
+        amount,
+        handed_to,
+      });
+
+      if (!amount || !handed_to) {
+        return res.status(400).json({
+          success: false,
+          error: "MISSING_REQUIRED_FIELDS",
+          message: "Amount and handed to are required",
+        });
+      }
+
+      const handoverId = await Collection.bulkHandover(hotelId, {
+        amount,
+        handover_to: handed_to,
+        handover_type: handover_type || "bulk",
+        remarks: remarks || "Total Balance Handover",
+        user_id: userId,
+      });
+
+      console.log("✅ [Controller] Bulk handover successful, ID:", handoverId);
+
+      res.json({
+        success: true,
+        data: { handoverId },
+        message: "Bulk handover recorded successfully",
+      });
+    } catch (error) {
+      console.error("❌ [Controller] Bulk handover error:", error.message);
+      res.status(500).json({
+        success: false,
+        error: "SERVER_ERROR",
+        message: "Failed to perform bulk handover: " + error.message,
+      });
+    }
+  },
+
+  // Get Handover history (Ledger)
+  getHandoverHistory: async (req, res) => {
+    try {
+      const hotelId = req.user.hotel_id;
+      const { startDate, endDate } = req.query;
+
+      console.log("📜 [Controller] Get handover history for hotel:", hotelId);
+
+      const history = await Collection.getHandoverHistory(hotelId, {
+        startDate,
+        endDate,
+      });
+
+      res.json({
+        success: true,
+        data: history,
+        message: "Handover history retrieved successfully",
+      });
+    } catch (error) {
+      console.error("❌ [Controller] Get history error:", error.message);
+      res.status(500).json({
+        success: false,
+        error: "SERVER_ERROR",
+        message: "Failed to retrieve handover history",
+      });
+    }
+  },
+
+  // Get Handover Types
+  getHandoverTypes: async (req, res) => {
+    try {
+      const hotelId = req.user.hotel_id;
+      const types = await Collection.getHandoverTypes(hotelId);
+
+      res.json({
+        success: true,
+        data: types,
+        message: "Handover types retrieved",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch types",
+      });
+    }
+  },
+
+  // Export collections to Excel/CSV
+  exportCollections: async (req, res) => {
+    try {
+      const hotelId = req.user.hotel_id;
+      const { startDate, endDate, paymentMode, handoverStatus, search } =
+        req.query;
+
+      console.log("📂 [Controller] Export collections:", { hotelId, startDate, endDate });
+
+      const collectionsData = await Collection.getCollections(hotelId, {
+        startDate,
+        endDate,
+        paymentMode: paymentMode || "all",
+        handoverStatus: handoverStatus || "all",
+        limit: 1000, // Export up to 1000 items
+        offset: 0,
+        search: search || "",
+      });
+
+      // For now, return JSON for download simulation or simple text-based CSV logic later
+      // But let's at least provide a valid JSON response so it doesn't crash
+      res.json({
+        success: true,
+        data: collectionsData.collections,
+        message: "Collections export data prepared",
+      });
+    } catch (error) {
+      console.error("❌ [Controller] Export error:", error.message);
+      res.status(500).json({
+        success: false,
+        message: "Failed to export collections",
+      });
+    }
+  },
+
   // Add a simple test endpoint
   testCollections: async (req, res) => {
     try {

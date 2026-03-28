@@ -2,20 +2,17 @@
 
 const Customer = require('../models/Customer');
 const PDFDocument = require('pdfkit');
-const fs = require('fs');
-const path = require('path');
 const { pool } = require('../config/database');
 
-
 const customerController = {
-  // Create new customer with ID images
+  // Create new customer
   createCustomer: async (req, res) => {
     try {
-      const { 
-        name, 
-        phone, 
-        email, 
-        id_number, 
+      const {
+        name,
+        phone,
+        email,
+        id_number, // This is the actual Aadhaar/PAN number
         id_type,
         id_image,
         id_image2,
@@ -27,12 +24,12 @@ const customerController = {
         city,
         state,
         pincode,
-         customer_gst_no ,
-         purpose_of_visit,      // NEW FIELD
-        other_expenses,        // NEW FIELD
+        customer_gst_no,
+        purpose_of_visit,
+        other_expenses,
         expense_description
       } = req.body;
-      
+
       const hotelId = req.user.hotel_id;
 
       // Check if customer with same phone already exists
@@ -46,13 +43,17 @@ const customerController = {
         });
       }
 
+      // Generate sequential customer number
+      const customerNumber = await Customer.generateCustomerNumber(hotelId);
+
       const customerId = await Customer.create({
         hotel_id: hotelId,
         name,
         phone,
         email: email || '',
-        id_number: id_number || '',
+        customer_number: customerNumber, // Sequential number (e.g., 25-0001)
         id_type: id_type || 'aadhaar',
+        id_number: id_number || null, // Actual ID proof number
         id_image: id_image || null,
         id_image2: id_image2 || null,
         payment_method: payment_method || 'cash',
@@ -64,16 +65,17 @@ const customerController = {
         state: state || '',
         pincode: pincode || '',
         customer_gst_no: customer_gst_no || null,
-        purpose_of_visit: purpose_of_visit || null, // NEW
-        other_expenses: other_expenses || 0,        // NEW
-        expense_description: expense_description || null // NEW
+        purpose_of_visit: purpose_of_visit || null,
+        other_expenses: other_expenses || 0,
+        expense_description: expense_description || null
       });
 
       res.status(201).json({
         success: true,
         message: 'Customer created successfully',
         data: {
-          customerId: customerId
+          customerId: customerId,
+          customerNumber: customerNumber
         }
       });
 
@@ -93,11 +95,13 @@ const customerController = {
       const hotelId = req.user.hotel_id;
       const customers = await Customer.findByHotel(hotelId);
 
-      // Remove base64 images from response to reduce payload size
-      const customersWithoutImages = customers.map(customer => {
+      // Transform data for frontend
+      const transformedCustomers = customers.map(customer => {
         const { id_image, id_image2, ...customerWithoutImages } = customer;
         return {
           ...customerWithoutImages,
+          customerNumber: customer.customer_number, // Sequential number
+          idNumber: customer.id_number, // Actual ID proof number
           has_id_image: !!id_image,
           has_id_image2: !!id_image2
         };
@@ -105,7 +109,7 @@ const customerController = {
 
       res.json({
         success: true,
-        data: customersWithoutImages
+        data: transformedCustomers
       });
 
     } catch (error) {
@@ -133,9 +137,16 @@ const customerController = {
         });
       }
 
+      // Transform data
+      const transformedCustomer = {
+        ...customer,
+        customerNumber: customer.customer_number,
+        idNumber: customer.id_number
+      };
+
       res.json({
         success: true,
-        data: customer
+        data: transformedCustomer
       });
 
     } catch (error) {
@@ -186,11 +197,12 @@ const customerController = {
     try {
       const { id } = req.params;
       const hotelId = req.user.hotel_id;
-      const { 
-        name, 
-        phone, 
-        email, 
-        id_number, 
+      const {
+        name,
+        phone,
+        email,
+        customer_number, // Sequential number
+        id_number, // Actual ID proof number
         id_type,
         id_image,
         id_image2,
@@ -202,18 +214,19 @@ const customerController = {
         city,
         state,
         pincode,
-        customer_gst_no ,
-         purpose_of_visit,      // NEW FIELD
-        other_expenses,        // NEW FIELD
-        expense_description    // NEW FIELD
+        customer_gst_no,
+        purpose_of_visit,
+        other_expenses,
+        expense_description
       } = req.body;
 
       const updated = await Customer.update(id, hotelId, {
         name,
         phone,
         email,
-        id_number,
+        customer_number,
         id_type,
+        id_number,
         id_image,
         id_image2,
         payment_method,
@@ -224,10 +237,10 @@ const customerController = {
         city,
         state,
         pincode,
-         customer_gst_no ,
-         purpose_of_visit,      // NEW
-        other_expenses,        // NEW
-        expense_description    // NEW
+        customer_gst_no,
+        purpose_of_visit,
+        other_expenses,
+        expense_description
       });
 
       if (!updated) {
@@ -308,15 +321,19 @@ const customerController = {
 
       const customers = await Customer.search(hotelId, q);
 
-      // Remove images from search results
-      const customersWithoutImages = customers.map(customer => {
+      // Transform data
+      const transformedCustomers = customers.map(customer => {
         const { id_image, id_image2, ...customerWithoutImages } = customer;
-        return customerWithoutImages;
+        return {
+          ...customerWithoutImages,
+          customerNumber: customer.customer_number,
+          idNumber: customer.id_number
+        };
       });
 
       res.json({
         success: true,
-        data: customersWithoutImages
+        data: transformedCustomers
       });
 
     } catch (error) {
@@ -393,6 +410,8 @@ const customerController = {
       });
     }
   },
+
+  // Generate PDF for single customer
   generateCustomerPDF: async (req, res) => {
     try {
       const { id } = req.params;
@@ -425,22 +444,14 @@ const customerController = {
       doc.pipe(res);
 
       // Add content to PDF
-      // Header
       doc.fontSize(25).font('Helvetica-Bold').text('CUSTOMER DETAILS', {
         align: 'center',
         underline: true
       });
 
       doc.moveDown();
-
-      // Hotel Info
-      doc.fontSize(12).font('Helvetica').text(`Hotel ID: ${hotelId}`, {
-        align: 'center'
-      });
-      doc.text(`Generated on: ${new Date().toLocaleDateString('en-GB')}`, {
-        align: 'center'
-      });
-
+      doc.fontSize(12).font('Helvetica').text(`Hotel ID: ${hotelId}`, { align: 'center' });
+      doc.text(`Generated on: ${new Date().toLocaleDateString('en-GB')}`, { align: 'center' });
       doc.moveDown(2);
 
       // Customer Information
@@ -448,12 +459,12 @@ const customerController = {
       doc.moveDown();
 
       const personalInfo = [
-        { label: 'Customer ID', value: customer.id },
+        { label: 'Customer Number', value: customer.customer_number || 'N/A' },
         { label: 'Name', value: customer.name },
         { label: 'Phone', value: customer.phone },
         { label: 'Email', value: customer.email || 'N/A' },
-        { label: 'ID Number', value: customer.id_number || 'N/A' },
         { label: 'ID Type', value: customer.id_type || 'N/A' },
+        { label: 'ID Number', value: customer.id_number || 'N/A' },
         { label: 'Created Date', value: new Date(customer.created_at).toLocaleDateString('en-GB') },
       ];
 
@@ -542,244 +553,84 @@ const customerController = {
       });
     }
   },
-//   // Add this new method to customerController.js
-// searchCustomersByPhone: async (req, res) => {
-//   try {
-//     const hotelId = req.user.hotel_id;
-//     const { phone } = req.query;
 
-//     if (!phone) {
-//       return res.status(400).json({
-//         success: false,
-//         error: 'PHONE_REQUIRED',
-//         message: 'Phone number is required'
-//       });
-//     }
+  // Search customers by phone
+  searchCustomersByPhone: async (req, res) => {
+    try {
+      const hotelId = req.user.hotel_id;
+      const { phone } = req.query;
 
-//     // Clean phone number - remove non-digits and leading zero
-//     const cleanPhone = phone.replace(/\D/g, '');
-//     const formattedPhone = cleanPhone.startsWith('0') ? cleanPhone.substring(1) : cleanPhone;
+      if (!phone) {
+        return res.status(400).json({
+          success: false,
+          error: 'PHONE_REQUIRED',
+          message: 'Phone number is required'
+        });
+      }
 
-//     console.log('🔍 Searching customer by phone:', formattedPhone);
+      // Clean phone number - remove all non-digits
+      const cleanPhone = phone.replace(/\D/g, '');
+      
+      // Create search variants
+      const phoneVariants = [cleanPhone];
+      
+      // Remove leading zero if present
+      const noLeadingZero = cleanPhone.replace(/^0+/, '');
+      if (noLeadingZero !== cleanPhone) phoneVariants.push(noLeadingZero);
+      
+      // Add leading zero if not present
+      if (!cleanPhone.startsWith('0') && cleanPhone.length >= 10) {
+        phoneVariants.push('0' + cleanPhone);
+      }
+      
+      // Last 10 digits only
+      phoneVariants.push(cleanPhone.slice(-10));
+      
+      // With country code
+      if (cleanPhone.length === 10) {
+        phoneVariants.push('+91' + cleanPhone);
+        phoneVariants.push('91' + cleanPhone);
+      }
+      
+      const uniqueVariants = [...new Set(phoneVariants)];
 
-//     const customer = await Customer.findByPhone(formattedPhone, hotelId);
-    
-//     if (!customer) {
-//       return res.json({
-//         success: true,
-//         data: []
-//       });
-//     }
+      // Build SQL query
+      const placeholders = uniqueVariants.map(() => '?').join(',');
+      const query = `
+        SELECT id, hotel_id, name, phone, email, customer_gst_no, 
+               address, city, state, pincode, purpose_of_visit,
+               other_expenses, expense_description, id_type, 
+               customer_number, id_number, created_at
+        FROM customers 
+        WHERE hotel_id = ? 
+        AND phone IN (${placeholders})
+        ORDER BY created_at DESC
+      `;
 
-//     // Remove images from response
-//     const { id_image, id_image2, ...customerWithoutImages } = customer;
+      const params = [hotelId, ...uniqueVariants];
+      const [customers] = await pool.execute(query, params);
 
-//     res.json({
-//       success: true,
-//       data: [customerWithoutImages] // Return as array for consistency
-//     });
+      // Transform data
+      const transformedCustomers = customers.map(customer => ({
+        ...customer,
+        customerNumber: customer.customer_number,
+        idNumber: customer.id_number
+      }));
 
-//   } catch (error) {
-//     console.error('Search customers by phone error:', error);
-//     res.status(500).json({
-//       success: false,
-//       error: 'SERVER_ERROR',
-//       message: 'Internal server error'
-//     });
-//   }
-// },
+      res.json({
+        success: true,
+        data: transformedCustomers
+      });
 
-// In customerController.js - Replace the searchCustomersByPhone method
-
-// searchCustomersByPhone: async (req, res) => {
-//   try {
-//     const hotelId = req.user.hotel_id;
-//     const { phone } = req.query;
-
-//     console.log('🔍 Backend search by phone - RECEIVED:', { phone, hotelId });
-
-//     if (!phone) {
-//       return res.status(400).json({
-//         success: false,
-//         error: 'PHONE_REQUIRED',
-//         message: 'Phone number is required'
-//       });
-//     }
-
-//     // Clean phone number - remove all non-digits
-//     const cleanPhone = phone.replace(/\D/g, '');
-//     console.log('🔍 Clean phone (digits only):', cleanPhone);
-    
-//     // Create search variants
-//     const phoneVariants = [];
-    
-//     // Original clean phone
-//     phoneVariants.push(cleanPhone);
-    
-//     // Remove leading zero if present
-//     const noLeadingZero = cleanPhone.replace(/^0+/, '');
-//     if (noLeadingZero !== cleanPhone) {
-//       phoneVariants.push(noLeadingZero);
-//     }
-    
-//     // Add leading zero if not present
-//     if (!cleanPhone.startsWith('0') && cleanPhone.length >= 10) {
-//       phoneVariants.push('0' + cleanPhone);
-//     }
-    
-//     // Last 10 digits only
-//     phoneVariants.push(cleanPhone.slice(-10));
-    
-//     // With country code
-//     if (cleanPhone.length === 10) {
-//       phoneVariants.push('+91' + cleanPhone);
-//       phoneVariants.push('91' + cleanPhone);
-//     }
-    
-//     // Remove duplicates
-//     const uniqueVariants = [...new Set(phoneVariants)];
-//     console.log('🔍 Searching with variants:', uniqueVariants);
-
-//     // Build SQL query to search with multiple patterns
-//     const placeholders = uniqueVariants.map(() => '?').join(',');
-//     const query = `
-//       SELECT id, hotel_id, name, phone, email, customer_gst_no, 
-//              address, city, state, pincode, purpose_of_visit,
-//              other_expenses, expense_description, id_type, id_number,
-//              created_at
-//       FROM customers 
-//       WHERE hotel_id = ? 
-//       AND phone IN (${placeholders})
-//       ORDER BY created_at DESC
-//     `;
-
-//     const params = [hotelId, ...uniqueVariants];
-//     console.log('🔍 SQL Query:', query);
-//     console.log('🔍 SQL Params:', params);
-
-//     const [customers] = await pool.execute(query, params);
-    
-//     console.log(`✅ Found ${customers.length} customers`);
-//     if (customers.length > 0) {
-//       console.log('📋 Customers found:', customers.map(c => ({
-//         id: c.id,
-//         name: c.name,
-//         phone: c.phone,
-//         created_at: c.created_at
-//       })));
-//     }
-
-//     res.json({
-//       success: true,
-//       data: customers
-//     });
-
-//   } catch (error) {
-//     console.error('❌ Search customers by phone error:', error);
-//     res.status(500).json({
-//       success: false,
-//       error: 'SERVER_ERROR',
-//       message: error.message
-//     });
-//   }
-// },
-
-searchCustomersByPhone: async (req, res) => {
-  try {
-    const hotelId = req.user.hotel_id;
-    const { phone } = req.query;
-
-    console.log('🔍 Backend search by phone - RECEIVED:', { phone, hotelId });
-
-    // FIRST: Let's see ALL phone numbers for this hotel
-    const [allPhones] = await pool.execute(
-      'SELECT id, name, phone, HEX(phone) as phone_hex FROM customers WHERE hotel_id = ?',
-      [hotelId]
-    );
-    
-    console.log('📋 ALL PHONES in database for hotel 35:');
-    allPhones.forEach(c => {
-      console.log(`ID: ${c.id}, Name: ${c.name}, Phone: "${c.phone}", HEX: ${c.phone_hex}`);
-    });
-
-    if (!phone) {
-      return res.status(400).json({
+    } catch (error) {
+      console.error('❌ Search customers by phone error:', error);
+      res.status(500).json({
         success: false,
-        error: 'PHONE_REQUIRED',
-        message: 'Phone number is required'
+        error: 'SERVER_ERROR',
+        message: error.message
       });
     }
-
-    // Clean phone number - remove all non-digits
-    const cleanPhone = phone.replace(/\D/g, '');
-    console.log('🔍 Clean phone (digits only):', cleanPhone);
-    
-    // Create search variants
-    const phoneVariants = [];
-    
-    // Original clean phone
-    phoneVariants.push(cleanPhone);
-    
-    // Remove leading zero if present
-    const noLeadingZero = cleanPhone.replace(/^0+/, '');
-    if (noLeadingZero !== cleanPhone) {
-      phoneVariants.push(noLeadingZero);
-    }
-    
-    // Add leading zero if not present
-    if (!cleanPhone.startsWith('0') && cleanPhone.length >= 10) {
-      phoneVariants.push('0' + cleanPhone);
-    }
-    
-    // Last 10 digits only
-    phoneVariants.push(cleanPhone.slice(-10));
-    
-    // With country code
-    if (cleanPhone.length === 10) {
-      phoneVariants.push('+91' + cleanPhone);
-      phoneVariants.push('91' + cleanPhone);
-    }
-    
-    // Remove duplicates
-    const uniqueVariants = [...new Set(phoneVariants)];
-    console.log('🔍 Searching with variants:', uniqueVariants);
-
-    // Build SQL query to search with multiple patterns
-    const placeholders = uniqueVariants.map(() => '?').join(',');
-    const query = `
-      SELECT id, hotel_id, name, phone, email, customer_gst_no, 
-             address, city, state, pincode, purpose_of_visit,
-             other_expenses, expense_description, id_type, id_number,
-             created_at
-      FROM customers 
-      WHERE hotel_id = ? 
-      AND phone IN (${placeholders})
-      ORDER BY created_at DESC
-    `;
-
-    const params = [hotelId, ...uniqueVariants];
-    console.log('🔍 SQL Query:', query);
-    console.log('🔍 SQL Params:', params);
-
-    const [customers] = await pool.execute(query, params);
-    
-    console.log(`✅ Found ${customers.length} customers`);
-
-    res.json({
-      success: true,
-      data: customers
-    });
-
-  } catch (error) {
-    console.error('❌ Search customers by phone error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'SERVER_ERROR',
-      message: error.message
-    });
-  }
-},
-
+  },
 };
 
 module.exports = customerController;

@@ -259,6 +259,13 @@ export interface FunctionBooking {
   total_room_amount?: number;
   total_room_gst?: number;
   total_room_gst_percentage?: number;
+    total_rooms_blocked: number; 
+ 
+  refund_amount?: number;
+  refund_method?: string;
+  refund_status?: string;
+  refund_processed_at?: string;
+  refund_id?: number;
 }
 
 export interface FunctionRoomBlock {

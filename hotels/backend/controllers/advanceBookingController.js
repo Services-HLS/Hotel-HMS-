@@ -3,9 +3,294 @@ const Customer = require('../models/Customer');
 const Room = require('../models/Room');
 const Booking = require('../models/Booking');
 const Transaction = require('../models/Transaction');
+const Collection = require('../models/Collection');
 const { pool } = require('../config/database');
 
+const EmailService = require('../services/emailService'); // 👈 ADD THIS
+const WhatsAppService = require('../services/whatsappService'); // 👈 ADD THIS
+
+// Import fs and path for logo handling
+const fs = require('fs'); // 👈 ADD THIS
+const path = require('path'); // 👈 ADD THIS
+
+// At the top of advanceBookingController.js, add this function
+const getBase64Logo = () => {
+    try {
+        // Try multiple possible paths for the logo
+        const possiblePaths = [
+            path.join(__dirname, '../public/logo.jpeg'),
+            path.join(__dirname, '../../public/logo.jpeg'),
+            path.join(__dirname, '../../../public/logo.jpeg'),
+            path.join(__dirname, 'public/logo.jpeg'),
+        ];
+
+        let logoPath = null;
+        for (const possiblePath of possiblePaths) {
+            if (fs.existsSync(possiblePath)) {
+                logoPath = possiblePath;
+                console.log(`✅ Found logo at: ${logoPath}`);
+                break;
+            }
+        }
+
+        if (!logoPath) {
+            console.log('⚠️ Logo file not found, using placeholder');
+            return 'https://via.placeholder.com/80x40/2c3e50/ffffff?text=HSPL';
+        }
+
+        const imageBuffer = fs.readFileSync(logoPath);
+        const base64Image = imageBuffer.toString('base64');
+        const mimeType = logoPath.endsWith('.png') ? 'image/png' : 'image/jpeg';
+
+        return `data:${mimeType};base64,${base64Image}`;
+    } catch (error) {
+        console.error('❌ Error loading logo:', error);
+        return 'https://via.placeholder.com/80x40/2c3e50/ffffff?text=HSPL';
+    }
+};
+
 const advanceBookingController = {
+    // Create advance booking
+    // createAdvanceBooking: async (req, res) => {
+    //     try {
+    //         const {
+    //             customer_id,
+    //             room_id,
+    //             from_date,
+    //             to_date,
+    //             from_time = '14:00',
+    //             to_time = '12:00',
+    //             guests = 1,
+    //             amount = 0,
+    //             advance_amount = 0,
+    //             service = 0,
+    //             cgst = 0,
+    //             sgst = 0,
+    //             igst = 0,
+    //             total = 0,
+    //             payment_method = 'cash',
+    //             payment_status = 'pending',
+    //             transaction_id = null,
+    //             status = 'pending',
+    //             expiry_days = 30,
+    //             special_requests = '',
+    //             id_type = 'aadhaar',
+    //             id_number = '',
+    //             id_image = null,
+    //             id_image2 = null,
+    //             referral_by = '',
+    //             referral_amount = 0,
+    //             // Customer details for new customer
+    //             customer_name,
+    //             customer_phone,
+    //             customer_email,
+    //             customer_id_number,
+    //             address,
+    //             city,
+    //             state,
+    //             pincode,
+    //             customer_gst_no,
+    //             purpose_of_visit,
+    //             other_expenses = 0,
+    //             expense_description = '',
+    //             notes = ''
+    //         } = req.body;
+
+    //         const hotelId = req.user.hotel_id;
+    //         let finalCustomerId = customer_id;
+    //         let isNewCustomer = false;
+
+    //         console.log('📝 Create advance booking request:', {
+    //             hotelId,
+    //             room_id,
+    //             from_date,
+    //             to_date,
+    //             customer_name,
+    //             customer_phone,
+    //             advance_amount,
+    //             total
+    //         });
+
+    //         // ===========================================
+    //         // 1. VALIDATE ROOM (if specified)
+    //         // ===========================================
+    //         if (room_id) {
+    //             const room = await Room.findById(room_id, hotelId);
+    //             if (!room) {
+    //                 return res.status(404).json({
+    //                     success: false,
+    //                     error: 'ROOM_NOT_FOUND',
+    //                     message: 'Room not found'
+    //                 });
+    //             }
+
+    //             // Check availability for future dates
+    //             const isAvailable = await Booking.checkRoomAvailability(
+    //                 room_id,
+    //                 hotelId,
+    //                 from_date,
+    //                 to_date,
+    //                 null,
+    //                 'booked'
+    //             );
+
+    //             if (!isAvailable) {
+    //                 return res.status(400).json({
+    //                     success: false,
+    //                     error: 'ROOM_NOT_AVAILABLE',
+    //                     message: 'Room is not available for the selected dates'
+    //                 });
+    //             }
+    //         }
+
+    //         // ===========================================
+    //         // 2. CUSTOMER HANDLING
+    //         // ===========================================
+    //         if (customer_name && customer_phone) {
+    //             const existingCustomer = await Customer.findByPhone(customer_phone, hotelId);
+
+    //             if (existingCustomer) {
+    //                 finalCustomerId = existingCustomer.id;
+    //                 console.log('✅ Found existing customer:', finalCustomerId);
+    //             } else {
+    //                 finalCustomerId = await Customer.create({
+    //                     hotel_id: hotelId,
+    //                     name: customer_name,
+    //                     phone: customer_phone,
+    //                     email: customer_email || '',
+    //                     id_number: customer_id_number || '',
+    //                     id_type: id_type || 'aadhaar',
+    //                     id_image: id_image || null,
+    //                     id_image2: id_image2 || null,
+    //                     address: address || '',
+    //                     city: city || '',
+    //                     state: state || '',
+    //                     pincode: pincode || '',
+    //                     customer_gst_no: customer_gst_no || '',
+    //                     purpose_of_visit: purpose_of_visit || null,
+    //                     other_expenses: other_expenses || 0,
+    //                     expense_description: expense_description || null
+    //                 });
+    //                 isNewCustomer = true;
+    //                 console.log('✅ Created new customer:', finalCustomerId);
+    //             }
+    //         }
+
+    //         // Calculate remaining amount
+    //         const remaining_amount = (parseFloat(total) || 0) - (parseFloat(advance_amount) || 0);
+
+    //         // Create advance booking
+    //         const advanceBookingId = await AdvanceBooking.create({
+    //             hotel_id: hotelId,
+    //             customer_id: finalCustomerId,
+    //             room_id,
+    //             from_date,
+    //             to_date,
+    //             from_time,
+    //             to_time,
+    //             guests,
+    //             amount: parseFloat(amount),
+    //             advance_amount: parseFloat(advance_amount),
+    //             remaining_amount,
+    //             service: parseFloat(service),
+    //             cgst: parseFloat(cgst),
+    //             sgst: parseFloat(sgst),
+    //             igst: parseFloat(igst),
+    //             total: parseFloat(total),
+    //             payment_method,
+    //             payment_status: remaining_amount <= 0 ? 'completed' : 'partial',
+    //             transaction_id,
+    //             status,
+    //             expiry_days,
+    //             special_requests,
+    //             id_type,
+    //             id_number,
+    //             id_image,
+    //             id_image2,
+    //             referral_by,
+    //             referral_amount: parseFloat(referral_amount),
+    //             address,
+    //             city,
+    //             state,
+    //             pincode,
+    //             customer_gst_no,
+    //             purpose_of_visit,
+    //             other_expenses: parseFloat(other_expenses),
+    //             expense_description,
+    //             created_by: req.user.userId,
+    //             notes
+    //         });
+
+    //         // Create transaction record if advance payment made
+    //         if (advance_amount > 0 && payment_method !== 'cash') {
+    //             const txnId = transaction_id || `ADV-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+    //             await Transaction.create({
+    //                 hotel_id: hotelId,
+    //                 booking_id: null,
+    //                 advance_booking_id: advanceBookingId,
+    //                 customer_id: finalCustomerId,
+    //                 transaction_id: txnId,
+    //                 amount: advance_amount,
+    //                 currency: 'INR',
+    //                 payment_method,
+    //                 payment_gateway: 'upi',
+    //                 status: 'success',
+    //                 status_message: 'Advance payment received',
+    //                 metadata: {
+    //                     type: 'advance_booking',
+    //                     booking_id: advanceBookingId,
+    //                     from_date,
+    //                     to_date,
+    //                     room_id
+    //                 }
+    //             });
+
+    //             if (!transaction_id) {
+    //                 await AdvanceBooking.update(advanceBookingId, hotelId, {
+    //                     transaction_id: txnId
+    //                 });
+    //             }
+    //         }
+
+    //         // If payment is completed and advance amount >= total, auto-confirm
+    //         if (remaining_amount <= 0) {
+    //             await AdvanceBooking.update(advanceBookingId, hotelId, {
+    //                 status: 'confirmed'
+    //             });
+    //         }
+
+    //         res.status(201).json({
+    //             success: true,
+    //             message: isNewCustomer ? 'New customer and advance booking created' : 'Advance booking created',
+    //             data: {
+    //                 advanceBookingId,
+    //                 customerId: finalCustomerId,
+    //                 isNewCustomer,
+    //                 invoiceNumber: (await AdvanceBooking.findById(advanceBookingId, hotelId))?.invoice_number,
+    //                 details: {
+    //                     from_date,
+    //                     to_date,
+    //                     total: parseFloat(total),
+    //                     advance_amount: parseFloat(advance_amount),
+    //                     remaining_amount,
+    //                     payment_status: remaining_amount <= 0 ? 'completed' : 'partial',
+    //                     expiry_days
+    //                 }
+    //             }
+    //         });
+
+    //     } catch (error) {
+    //         console.error('❌ Create advance booking error:', error);
+    //         res.status(500).json({
+    //             success: false,
+    //             error: 'SERVER_ERROR',
+    //             message: 'Internal server error: ' + error.message
+    //         });
+    //     }
+    // },
+
+
     // Create advance booking
     createAdvanceBooking: async (req, res) => {
         try {
@@ -49,7 +334,9 @@ const advanceBookingController = {
                 purpose_of_visit,
                 other_expenses = 0,
                 expense_description = '',
-                notes = ''
+                notes = '',
+                // New field to track if checkout was auto-generated
+                is_checkout_auto_generated = false
             } = req.body;
 
             const hotelId = req.user.hotel_id;
@@ -64,7 +351,8 @@ const advanceBookingController = {
                 customer_name,
                 customer_phone,
                 advance_amount,
-                total
+                total,
+                is_checkout_auto_generated
             });
 
             // ===========================================
@@ -135,6 +423,14 @@ const advanceBookingController = {
             // Calculate remaining amount
             const remaining_amount = (parseFloat(total) || 0) - (parseFloat(advance_amount) || 0);
 
+            // Add note about auto-generated checkout date if applicable
+            let finalNotes = notes;
+            if (is_checkout_auto_generated) {
+                finalNotes = finalNotes
+                    ? `${finalNotes}\n[System] Checkout date was auto-generated (default 1 night stay)`
+                    : '[System] Checkout date was auto-generated (default 1 night stay)';
+            }
+
             // Create advance booking
             const advanceBookingId = await AdvanceBooking.create({
                 hotel_id: hotelId,
@@ -174,40 +470,41 @@ const advanceBookingController = {
                 other_expenses: parseFloat(other_expenses),
                 expense_description,
                 created_by: req.user.userId,
-                notes
+                notes: finalNotes
             });
 
             // Create transaction record if advance payment made
-            if (advance_amount > 0 && payment_method !== 'cash') {
-                const txnId = transaction_id || `ADV-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+            // if (advance_amount > 0 && payment_method !== 'cash') {
+            //     const txnId = transaction_id || `ADV-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
-                await Transaction.create({
-                    hotel_id: hotelId,
-                    booking_id: null,
-                    advance_booking_id: advanceBookingId,
-                    customer_id: finalCustomerId,
-                    transaction_id: txnId,
-                    amount: advance_amount,
-                    currency: 'INR',
-                    payment_method,
-                    payment_gateway: 'upi',
-                    status: 'success',
-                    status_message: 'Advance payment received',
-                    metadata: {
-                        type: 'advance_booking',
-                        booking_id: advanceBookingId,
-                        from_date,
-                        to_date,
-                        room_id
-                    }
-                });
+            //     await Transaction.create({
+            //         hotel_id: hotelId,
+            //         booking_id: null,
+            //         advance_booking_id: advanceBookingId,
+            //         customer_id: finalCustomerId,
+            //         transaction_id: txnId,
+            //         amount: advance_amount,
+            //         currency: 'INR',
+            //         payment_method,
+            //         payment_gateway: 'upi',
+            //         status: 'success',
+            //         status_message: 'Advance payment received',
+            //         metadata: {
+            //             type: 'advance_booking',
+            //             booking_id: advanceBookingId,
+            //             from_date,
+            //             to_date,
+            //             room_id,
+            //             is_checkout_auto_generated
+            //         }
+            //     });
 
-                if (!transaction_id) {
-                    await AdvanceBooking.update(advanceBookingId, hotelId, {
-                        transaction_id: txnId
-                    });
-                }
-            }
+            //     if (!transaction_id) {
+            //         await AdvanceBooking.update(advanceBookingId, hotelId, {
+            //             transaction_id: txnId
+            //         });
+            //     }
+            // }
 
             // If payment is completed and advance amount >= total, auto-confirm
             if (remaining_amount <= 0) {
@@ -216,6 +513,9 @@ const advanceBookingController = {
                 });
             }
 
+            // Get the created booking to return
+            const createdBooking = await AdvanceBooking.findById(advanceBookingId, hotelId);
+
             res.status(201).json({
                 success: true,
                 message: isNewCustomer ? 'New customer and advance booking created' : 'Advance booking created',
@@ -223,7 +523,7 @@ const advanceBookingController = {
                     advanceBookingId,
                     customerId: finalCustomerId,
                     isNewCustomer,
-                    invoiceNumber: (await AdvanceBooking.findById(advanceBookingId, hotelId))?.invoice_number,
+                    invoiceNumber: createdBooking?.invoice_number,
                     details: {
                         from_date,
                         to_date,
@@ -231,7 +531,8 @@ const advanceBookingController = {
                         advance_amount: parseFloat(advance_amount),
                         remaining_amount,
                         payment_status: remaining_amount <= 0 ? 'completed' : 'partial',
-                        expiry_days
+                        expiry_days,
+                        is_checkout_auto_generated
                     }
                 }
             });
@@ -245,6 +546,38 @@ const advanceBookingController = {
             });
         }
     },
+
+    // Get all advance bookings
+    // getAdvanceBookings: async (req, res) => {
+    //     try {
+    //         const hotelId = req.user.hotel_id;
+    //         const { status, payment_status, from_date, to_date } = req.query;
+
+    //         // Check for expired bookings first
+    //         await AdvanceBooking.checkExpired(hotelId);
+
+    //         const bookings = await AdvanceBooking.findByHotel(hotelId, {
+    //             status,
+    //             payment_status,
+    //             from_date,
+    //             to_date
+    //         });
+
+    //         res.json({
+    //             success: true,
+    //             data: bookings,
+    //             count: bookings.length
+    //         });
+
+    //     } catch (error) {
+    //         console.error('❌ Get advance bookings error:', error);
+    //         res.status(500).json({
+    //             success: false,
+    //             error: 'SERVER_ERROR',
+    //             message: 'Internal server error'
+    //         });
+    //     }
+    // },
 
     // Get all advance bookings
     getAdvanceBookings: async (req, res) => {
@@ -262,10 +595,22 @@ const advanceBookingController = {
                 to_date
             });
 
+            // Format dates properly for frontend
+            const formattedBookings = bookings.map(booking => ({
+                ...booking,
+                from_date: booking.from_date, // Keep original
+                to_date: booking.to_date,
+                advance_expiry_date: booking.advance_expiry_date,
+                // Add formatted dates for display
+                from_date_display: booking.from_date ? new Date(booking.from_date).toLocaleDateString('en-IN') : null,
+                to_date_display: booking.to_date ? new Date(booking.to_date).toLocaleDateString('en-IN') : null,
+                created_at_display: booking.created_at ? new Date(booking.created_at).toLocaleString('en-IN') : null
+            }));
+
             res.json({
                 success: true,
-                data: bookings,
-                count: bookings.length
+                data: formattedBookings,
+                count: formattedBookings.length
             });
 
         } catch (error) {
@@ -430,120 +775,333 @@ const advanceBookingController = {
         }
     },
 
-    // Convert advance booking to regular booking
+
+
     // convertToBooking: async (req, res) => {
-    //     try {
-    //         const { id } = req.params;
-    //         const hotelId = req.user.hotel_id;
+    //         try {
+    //             const { id } = req.params;
+    //             const hotelId = req.user.hotel_id;
+    //             const userId = req.user.userId;
 
-    //         const advanceBooking = await AdvanceBooking.findById(id, hotelId);
-    //         if (!advanceBooking) {
-    //             return res.status(404).json({
-    //                 success: false,
-    //                 error: 'BOOKING_NOT_FOUND',
-    //                 message: 'Advance booking not found'
-    //             });
-    //         }
+    //             console.log('🔄 Converting advance booking to regular booking:', { id, hotelId, userId });
 
-    //         if (advanceBooking.status !== 'confirmed' && advanceBooking.status !== 'pending') {
-    //             return res.status(400).json({
-    //                 success: false,
-    //                 error: 'INVALID_STATUS',
-    //                 message: 'Only confirmed or pending bookings can be converted'
-    //             });
-    //         }
-
-    //         if (!advanceBooking.room_id) {
-    //             return res.status(400).json({
-    //                 success: false,
-    //                 error: 'ROOM_REQUIRED',
-    //                 message: 'Room must be selected to convert to booking'
-    //             });
-    //         }
-
-    //         // Check room availability
-    //         const isAvailable = await Booking.checkRoomAvailability(
-    //             advanceBooking.room_id,
-    //             hotelId,
-    //             advanceBooking.from_date,
-    //             advanceBooking.to_date,
-    //             null,
-    //             'booked'
-    //         );
-
-    //         if (!isAvailable) {
-    //             return res.status(400).json({
-    //                 success: false,
-    //                 error: 'ROOM_NOT_AVAILABLE',
-    //                 message: 'Room is no longer available for the selected dates'
-    //             });
-    //         }
-
-    //         // Create regular booking
-    //         const bookingData = {
-    //             hotel_id: hotelId,
-    //             room_id: advanceBooking.room_id,
-    //             customer_id: advanceBooking.customer_id,
-    //             from_date: advanceBooking.from_date,
-    //             to_date: advanceBooking.to_date,
-    //             from_time: advanceBooking.from_time,
-    //             to_time: advanceBooking.to_time,
-    //             amount: advanceBooking.amount,
-    //             service: advanceBooking.service,
-    //             gst: advanceBooking.cgst + advanceBooking.sgst + advanceBooking.igst,
-    //             cgst: advanceBooking.cgst,
-    //             sgst: advanceBooking.sgst,
-    //             igst: advanceBooking.igst,
-    //             total: advanceBooking.total,
-    //             status: 'booked',
-    //             guests: advanceBooking.guests,
-    //             special_requests: advanceBooking.special_requests,
-    //             id_type: advanceBooking.id_type,
-    //             payment_method: advanceBooking.payment_method,
-    //             payment_status: advanceBooking.remaining_amount <= 0 ? 'completed' : 'pending',
-    //             transaction_id: advanceBooking.transaction_id,
-    //             referral_by: advanceBooking.referral_by,
-    //             referral_amount: advanceBooking.referral_amount
-    //         };
-
-    //         const bookingId = await Booking.create(bookingData);
-
-    //         // Mark advance booking as converted
-    //         await AdvanceBooking.convertToBooking(id, hotelId, bookingId, req.user.userId);
-
-    //         // Update room status
-    //         await Room.updateStatus(advanceBooking.room_id, hotelId, 'booked');
-
-    //         res.json({
-    //             success: true,
-    //             message: 'Advance booking converted to regular booking',
-    //             data: {
-    //                 advance_booking_id: id,
-    //                 booking_id: bookingId,
-    //                 room_number: advanceBooking.room_number,
-    //                 total: advanceBooking.total,
-    //                 advance_paid: advanceBooking.advance_amount,
-    //                 remaining: advanceBooking.remaining_amount
+    //             const advanceBooking = await AdvanceBooking.findById(id, hotelId);
+    //             if (!advanceBooking) {
+    //                 return res.status(404).json({
+    //                     success: false,
+    //                     error: 'BOOKING_NOT_FOUND',
+    //                     message: 'Advance booking not found'
+    //                 });
     //             }
-    //         });
 
-    //     } catch (error) {
-    //         console.error('❌ Convert to booking error:', error);
-    //         res.status(500).json({
-    //             success: false,
-    //             error: 'SERVER_ERROR',
-    //             message: 'Internal server error: ' + error.message
-    //         });
-    //     }
-    // },
+    //             if (advanceBooking.status === 'converted') {
+    //                 return res.status(400).json({
+    //                     success: false,
+    //                     error: 'ALREADY_CONVERTED',
+    //                     message: 'This advance booking has already been converted'
+    //                 });
+    //             }
 
-    // Convert advance booking to regular booking
+    //             if (advanceBooking.status !== 'confirmed' && advanceBooking.status !== 'pending') {
+    //                 return res.status(400).json({
+    //                     success: false,
+    //                     error: 'INVALID_STATUS',
+    //                     message: 'Only confirmed or pending bookings can be converted'
+    //                 });
+    //             }
+
+    //             if (!advanceBooking.room_id) {
+    //                 return res.status(400).json({
+    //                     success: false,
+    //                     error: 'ROOM_REQUIRED',
+    //                     message: 'Room must be selected to convert to booking'
+    //                 });
+    //             }
+
+    //             const isAvailable = await Booking.checkRoomAvailability(
+    //                 advanceBooking.room_id,
+    //                 hotelId,
+    //                 advanceBooking.from_date,
+    //                 advanceBooking.to_date,
+    //                 null,
+    //                 'booked'
+    //             );
+
+    //             if (!isAvailable) {
+    //                 return res.status(400).json({
+    //                     success: false,
+    //                     error: 'ROOM_NOT_AVAILABLE',
+    //                     message: 'Room is no longer available for the selected dates'
+    //                 });
+    //             }
+
+    //             const fullTotal = parseFloat(advanceBooking.total) || 0;
+    //             const advancePaid = parseFloat(advanceBooking.advance_amount) || 0;
+    //             const remainingAmount = fullTotal - advancePaid;
+
+    //             const paymentStatus = remainingAmount <= 0 ? 'completed' : 'pending';
+    //             const paymentMethod = advanceBooking.payment_method || 'cash';
+
+    //             console.log('💰 Amount calculation:', {
+    //                 fullTotal,
+    //                 advancePaid,
+    //                 remainingAmount,
+    //                 paymentStatus,
+    //                 paymentMethod
+    //             });
+
+    //             const bookingData = {
+    //                 hotel_id: hotelId,
+    //                 room_id: advanceBooking.room_id,
+    //                 customer_id: advanceBooking.customer_id,
+    //                 advance_booking_id: advanceBooking.id,
+    //                 from_date: advanceBooking.from_date,
+    //                 to_date: advanceBooking.to_date,
+    //                 from_time: advanceBooking.from_time,
+    //                 to_time: advanceBooking.to_time,
+    //                 amount: parseFloat(advanceBooking.amount) || 0,
+    //                 service: parseFloat(advanceBooking.service) || 0,
+    //                 gst: (parseFloat(advanceBooking.cgst) || 0) +
+    //                     (parseFloat(advanceBooking.sgst) || 0) +
+    //                     (parseFloat(advanceBooking.igst) || 0),
+    //                 cgst: parseFloat(advanceBooking.cgst) || 0,
+    //                 sgst: parseFloat(advanceBooking.sgst) || 0,
+    //                 igst: parseFloat(advanceBooking.igst) || 0,
+    //                 total: fullTotal,
+    //                 advance_amount_paid: advancePaid,
+    //                 remaining_amount: remainingAmount,
+    //                 status: 'booked',
+    //                 guests: advanceBooking.guests || 1,
+    //                 special_requests: advanceBooking.special_requests || '',
+    //                 id_type: advanceBooking.id_type || 'aadhaar',
+    //                 payment_method: paymentMethod,
+    //                 payment_status: paymentStatus,
+    //                 transaction_id: advanceBooking.transaction_id || null,
+    //                 referral_by: advanceBooking.referral_by || '',
+    //                 referral_amount: parseFloat(advanceBooking.referral_amount) || 0
+    //             };
+
+    //             console.log('📝 Creating booking with data:', bookingData);
+    //             const bookingId = await Booking.create(bookingData);
+
+    //             // ===========================================
+    //             // CREATE COLLECTION FOR CASH ADVANCE PAYMENT
+    //             // ===========================================
+
+    //             if (advancePaid > 0) {
+    //                 console.log(`💰 Processing advance payment of ₹${advancePaid} via ${paymentMethod}`);
+
+    //                 if (paymentMethod === 'cash') {
+    //                     try {
+    //                         // Get customer name for collection
+    //                         const customerName = advanceBooking.customer_name || 'Walk-in Customer';
+
+    //                         // Insert directly into collections table
+    //                         const insertQuery = `
+    //                             INSERT INTO collections (
+    //                                 hotel_id, booking_id, collection_date, payment_mode,
+    //                                 amount, remarks, collected_by, handover_status, created_by
+    //                             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    //                         `;
+
+    //                         const insertParams = [
+    //                             hotelId,
+    //                             bookingId,
+    //                             new Date().toISOString().split('T')[0],
+    //                             'cash',
+    //                             remainingAmount,
+    //                             `Advance payment from booking #${advanceBooking.invoice_number || advanceBooking.id} (converted)`,
+    //                             userId,
+    //                             'pending',
+    //                             userId
+    //                         ];
+
+    //                         const [collectionResult] = await pool.execute(insertQuery, insertParams);
+    //                         console.log('✅ Collection created for advance payment with ID:', collectionResult.insertId);
+
+    //                     } catch (collectionError) {
+    //                         console.error('❌ Failed to create collection:', collectionError);
+    //                     }
+    //                 } 
+    //                 else if (paymentMethod === 'online' || paymentMethod === 'upi' || paymentMethod === 'card') {
+    //                     try {
+    //                         const transactionId = advanceBooking.transaction_id || `TXN-ADV-${Date.now()}`;
+
+    //                         const transactionRecord = await Transaction.create({
+    //                             hotel_id: hotelId,
+    //                             booking_id: bookingId,
+    //                             advance_booking_id: advanceBooking.id,
+    //                             customer_id: advanceBooking.customer_id,
+    //                             transaction_id: transactionId,
+    //                             amount: advancePaid,
+    //                             currency: 'INR',
+    //                             payment_method: paymentMethod,
+    //                             payment_gateway: paymentMethod === 'online' ? 'upi' : paymentMethod,
+    //                             status: 'success',
+    //                             status_message: 'Advance payment received (converted from advance booking)',
+    //                             metadata: {
+    //                                 room_id: advanceBooking.room_id,
+    //                                 room_number: advanceBooking.room_number,
+    //                                 from_date: advanceBooking.from_date,
+    //                                 to_date: advanceBooking.to_date,
+    //                                 customer_name: advanceBooking.customer_name,
+    //                                 customer_phone: advanceBooking.customer_phone,
+    //                                 is_advance_conversion: true,
+    //                                 full_total: fullTotal,
+    //                                 remaining_amount: remainingAmount,
+    //                                 invoice_number: advanceBooking.invoice_number
+    //                             }
+    //                         });
+
+    //                         console.log('💰 Transaction created for advance payment:', transactionRecord);
+    //                     } catch (transactionError) {
+    //                         console.error('❌ Transaction creation error:', transactionError);
+    //                     }
+    //                 }
+    //             }
+
+    //             if (remainingAmount > 0) {
+    //                 console.log('⏳ Remaining amount to be paid at check-in: ₹' + remainingAmount);
+    //             }
+
+    //             await AdvanceBooking.convertToBooking(id, hotelId, bookingId, userId);
+
+    //             const Room = require('../models/Room');
+    //             await Room.updateStatus(advanceBooking.room_id, hotelId, 'booked');
+
+    //             // ===========================================
+    //             // SEND CONFIRMATION (EMAIL + WHATSAPP)
+    //             // ===========================================
+    //             setTimeout(async () => {
+    //                 try {
+    //                     const [fullBooking] = await pool.execute(`
+    //                         SELECT b.*, r.room_number, r.type as room_type,
+    //                                c.name as customer_name, c.email as customer_email, c.phone as customer_phone,
+    //                                c.customer_gst_no, c.address, c.city, c.state, c.pincode,
+    //                                h.name as hotel_name, b.hotel_id
+    //                         FROM bookings b
+    //                         LEFT JOIN rooms r ON b.room_id = r.id
+    //                         LEFT JOIN customers c ON b.customer_id = c.id
+    //                         LEFT JOIN hotels h ON b.hotel_id = h.id
+    //                         WHERE b.id = ? AND b.hotel_id = ?
+    //                     `, [bookingId, hotelId]);
+
+    //                     if (fullBooking.length > 0) {
+    //                         const booking = fullBooking[0];
+
+    //                         const [adminRows] = await pool.execute(
+    //                             `SELECT email, name, phone FROM users 
+    //                              WHERE hotel_id = ? AND role = 'admin' AND status = 'active'
+    //                              LIMIT 1`,
+    //                             [hotelId]
+    //                         );
+
+    //                         const hotelAdmin = adminRows.length > 0 ? adminRows[0] : null;
+    //                         const hotelAdminEmail = hotelAdmin ? hotelAdmin.email : process.env.EMAIL_USER;
+    //                         const hotelAdminName = hotelAdmin ? hotelAdmin.name : 'Hotel Admin';
+    //                         const hotelAdminPhone = hotelAdmin ? hotelAdmin.phone : null;
+
+    //                         const hotelDetails = {
+    //                             name: booking.hotel_name || 'Hotel',
+    //                             email: hotelAdminEmail,
+    //                             address: ''
+    //                         };
+
+    //                         const hotelOwnerDetails = {
+    //                             name: hotelAdminName,
+    //                             email: hotelAdminEmail,
+    //                             phone: hotelAdminPhone
+    //                         };
+
+    //                         const customerEmail = booking.customer_email;
+    //                         const customerName = booking.customer_name;
+    //                         const customerPhone = booking.customer_phone;
+
+    //                         const customerDetails = {
+    //                             name: customerName,
+    //                             email: customerEmail,
+    //                             phone: customerPhone
+    //                         };
+
+    //                         const companyLogoBase64 = getBase64Logo();
+
+    //                         if (customerDetails.email) {
+    //                             await EmailService.sendBookingConfirmation(booking, hotelDetails, customerDetails, {
+    //                                 companyLogoUrl: companyLogoBase64,
+    //                                 companyName: 'Hithlaksh Solutions Private Limited',
+    //                                 companyWebsite: 'https://hithlakshsolutions.com/',
+    //                                 privacyLink: 'https://hithlakshsolutions.com/privacy',
+    //                                 termsLink: 'https://hithlakshsolutions.com/terms'
+    //                             });
+    //                             console.log(`✅ Booking confirmation email sent to customer (conversion)`);
+    //                         }
+
+    //                         if (customerDetails.phone || hotelOwnerDetails.phone) {
+    //                             try {
+    //                                 const whatsappResults = await WhatsAppService.sendBookingConfirmationToAll(
+    //                                     booking,
+    //                                     booking.hotel_name || 'Hotel',
+    //                                     customerDetails,
+    //                                     hotelOwnerDetails
+    //                                 );
+
+    //                                 if (whatsappResults.customer?.success) {
+    //                                     console.log(`📱 WhatsApp sent to customer: ${customerDetails.name}`);
+    //                                 }
+    //                                 if (whatsappResults.hotelOwner?.success) {
+    //                                     console.log(`📱 WhatsApp sent to hotel owner: ${hotelOwnerDetails.name}`);
+    //                                 }
+    //                             } catch (whatsappError) {
+    //                                 console.error(`❌ WhatsApp error:`, whatsappError.message);
+    //                             }
+    //                         }
+    //                     }
+    //                 } catch (error) {
+    //                     console.error('❌ Error sending booking confirmations:', error);
+    //                 }
+    //             }, 1000);
+
+    //             res.json({
+    //                 success: true,
+    //                 message: 'Advance booking converted to regular booking',
+    //                 data: {
+    //                     advance_booking_id: id,
+    //                     booking_id: bookingId,
+    //                     room_number: advanceBooking.room_number,
+    //                     full_total: fullTotal,
+    //                     advance_paid: advancePaid,
+    //                     remaining_amount: remainingAmount,
+    //                     payment_status: paymentStatus,
+    //                     payment_method: paymentMethod
+    //                 }
+    //             });
+
+    //         } catch (error) {
+    //             console.error('❌ Convert to booking error:', error);
+    //             res.status(500).json({
+    //                 success: false,
+    //                 error: 'SERVER_ERROR',
+    //                 message: 'Internal server error: ' + error.message
+    //             });
+    //         }
+    //     },
+
+
+
+    // In advanceBookingController.js - UPDATED convertToBooking method
     convertToBooking: async (req, res) => {
         try {
             const { id } = req.params;
             const hotelId = req.user.hotel_id;
+            const userId = req.user.userId;
 
-            // Get advance booking data
+              const { 
+            conversion_payment_method,  // 👈 ADD THIS
+            conversion_payment_status   // 👈 ADD THIS (optional)
+        } = req.body;
+
+            console.log('🔄 Converting advance booking to regular booking:', { id, hotelId, userId,  conversion_payment_method });
+
             const advanceBooking = await AdvanceBooking.findById(id, hotelId);
             if (!advanceBooking) {
                 return res.status(404).json({
@@ -553,7 +1111,6 @@ const advanceBookingController = {
                 });
             }
 
-            // Check if already converted
             if (advanceBooking.status === 'converted') {
                 return res.status(400).json({
                     success: false,
@@ -578,7 +1135,6 @@ const advanceBookingController = {
                 });
             }
 
-            // Check room availability
             const isAvailable = await Booking.checkRoomAvailability(
                 advanceBooking.room_id,
                 hotelId,
@@ -596,40 +1152,249 @@ const advanceBookingController = {
                 });
             }
 
-            // Create regular booking
+            const fullTotal = parseFloat(advanceBooking.total) || 0;
+            const advancePaid = parseFloat(advanceBooking.advance_amount) || 0;
+            const remainingAmount = fullTotal - advancePaid;
+
+            const paymentStatus = remainingAmount <= 0 ? 'completed' : 'pending';
+            // const paymentMethod = advanceBooking.payment_method || 'cash';
+               const paymentMethod = conversion_payment_method || advanceBooking.payment_method || 'cash';
+
+            console.log('💰 Amount calculation:', {
+                fullTotal,
+                advancePaid,
+                remainingAmount,
+                paymentStatus,
+                paymentMethod
+            });
+
             const bookingData = {
                 hotel_id: hotelId,
                 room_id: advanceBooking.room_id,
                 customer_id: advanceBooking.customer_id,
+                advance_booking_id: advanceBooking.id,
                 from_date: advanceBooking.from_date,
                 to_date: advanceBooking.to_date,
                 from_time: advanceBooking.from_time,
                 to_time: advanceBooking.to_time,
-                amount: advanceBooking.amount,
-                service: advanceBooking.service,
-                gst: advanceBooking.cgst + advanceBooking.sgst + advanceBooking.igst,
-                cgst: advanceBooking.cgst,
-                sgst: advanceBooking.sgst,
-                igst: advanceBooking.igst,
-                total: advanceBooking.total,
+                amount: parseFloat(advanceBooking.amount) || 0,
+                service: parseFloat(advanceBooking.service) || 0,
+                gst: (parseFloat(advanceBooking.cgst) || 0) +
+                    (parseFloat(advanceBooking.sgst) || 0) +
+                    (parseFloat(advanceBooking.igst) || 0),
+                cgst: parseFloat(advanceBooking.cgst) || 0,
+                sgst: parseFloat(advanceBooking.sgst) || 0,
+                igst: parseFloat(advanceBooking.igst) || 0,
+                total: fullTotal,
+                advance_amount_paid: advancePaid,
+                remaining_amount: remainingAmount,
                 status: 'booked',
-                guests: advanceBooking.guests,
-                special_requests: advanceBooking.special_requests,
-                id_type: advanceBooking.id_type,
-                payment_method: advanceBooking.payment_method,
-                payment_status: advanceBooking.remaining_amount <= 0 ? 'completed' : 'pending',
-                transaction_id: advanceBooking.transaction_id,
-                referral_by: advanceBooking.referral_by,
-                referral_amount: advanceBooking.referral_amount
+                guests: advanceBooking.guests || 1,
+                special_requests: advanceBooking.special_requests || '',
+                id_type: advanceBooking.id_type || 'aadhaar',
+                payment_method: paymentMethod,
+                payment_status: paymentStatus,
+                transaction_id: advanceBooking.transaction_id || null,
+                referral_by: advanceBooking.referral_by || '',
+                referral_amount: parseFloat(advanceBooking.referral_amount) || 0
             };
 
+            console.log('📝 Creating booking with data:', bookingData);
             const bookingId = await Booking.create(bookingData);
 
-            // Mark advance booking as converted - THIS IS THE KEY PART
-            await AdvanceBooking.convertToBooking(id, hotelId, bookingId, req.user.userId);
+            // ===========================================
+            // CREATE COLLECTION FOR CASH ADVANCE PAYMENT
+            // ===========================================
 
-            // Update room status
+            if (advancePaid > 0) {
+                console.log(`💰 Processing advance payment of ₹${advancePaid} via ${paymentMethod}`);
+
+                if (paymentMethod === 'cash') {
+                    try {
+                        // Get customer name for collection
+                        const customerName = advanceBooking.customer_name || 'Walk-in Customer';
+
+                        // Insert directly into collections table
+                        const insertQuery = `
+                        INSERT INTO collections (
+                            hotel_id, booking_id, collection_date, payment_mode,
+                            amount, remarks, collected_by, handover_status, created_by
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    `;
+
+                        const insertParams = [
+                            hotelId,
+                            bookingId,
+                            new Date().toISOString().split('T')[0],
+                            'cash',
+                            remainingAmount,
+                            `Advance payment from booking #${advanceBooking.invoice_number || advanceBooking.id} (converted)`,
+                            userId,
+                            'pending',
+                            userId
+                        ];
+
+                        const [collectionResult] = await pool.execute(insertQuery, insertParams);
+                        console.log('✅ Collection created for advance payment with ID:', collectionResult.insertId);
+
+                    } catch (collectionError) {
+                        console.error('❌ Failed to create collection:', collectionError);
+                    }
+                }
+                else if (paymentMethod === 'online' || paymentMethod === 'upi' || paymentMethod === 'card') {
+                    try {
+                        const transactionId = advanceBooking.transaction_id || `TXN-ADV-${Date.now()}`;
+
+                        const transactionRecord = await Transaction.create({
+                            hotel_id: hotelId,
+                            booking_id: bookingId,
+                            advance_booking_id: advanceBooking.id,
+                            customer_id: advanceBooking.customer_id,
+                            transaction_id: transactionId,
+                            amount: advancePaid,
+                            currency: 'INR',
+                            payment_method: paymentMethod,
+                            payment_gateway: paymentMethod === 'online' ? 'upi' : paymentMethod,
+                            status: 'success',
+                            status_message: 'Advance payment received (converted from advance booking)',
+                            metadata: {
+                                room_id: advanceBooking.room_id,
+                                room_number: advanceBooking.room_number,
+                                from_date: advanceBooking.from_date,
+                                to_date: advanceBooking.to_date,
+                                customer_name: advanceBooking.customer_name,
+                                customer_phone: advanceBooking.customer_phone,
+                                is_advance_conversion: true,
+                                full_total: fullTotal,
+                                remaining_amount: remainingAmount,
+                                invoice_number: advanceBooking.invoice_number,
+                                 conversion_payment_method: paymentMethod  
+                            }
+                        });
+
+                        console.log('💰 Transaction created for advance payment:', transactionRecord);
+                    } catch (transactionError) {
+                        console.error('❌ Transaction creation error:', transactionError);
+                    }
+                }
+            }
+
+            if (remainingAmount > 0) {
+                console.log('⏳ Remaining amount to be paid at check-in: ₹' + remainingAmount);
+            }
+
+            // ===========================================
+            // FIX: UPDATE ADVANCE BOOKING PAYMENT STATUS TO COMPLETED
+            // AND REMAINING AMOUNT TO 0
+            // ===========================================
+
+            // Update advance booking with completed payment status and 0 remaining amount
+            await AdvanceBooking.update(id, hotelId, {
+                status: 'converted',
+                payment_status: 'completed',  // Set to completed
+                remaining_amount: 0,           // Set remaining to 0
+                notes: advanceBooking.notes
+                    ? advanceBooking.notes + '\n[System] Converted to regular booking on ' + new Date().toLocaleDateString()
+                    : '[System] Converted to regular booking on ' + new Date().toLocaleDateString()
+            });
+
+            // Also call convertToBooking for backward compatibility (it updates status to 'converted')
+            await AdvanceBooking.convertToBooking(id, hotelId, bookingId, userId);
+
+            const Room = require('../models/Room');
             await Room.updateStatus(advanceBooking.room_id, hotelId, 'booked');
+
+            // ===========================================
+            // SEND CONFIRMATION (EMAIL + WHATSAPP)
+            // ===========================================
+            setTimeout(async () => {
+                try {
+                    const [fullBooking] = await pool.execute(`
+                    SELECT b.*, r.room_number, r.type as room_type,
+                           c.name as customer_name, c.email as customer_email, c.phone as customer_phone,
+                           c.customer_gst_no, c.address, c.city, c.state, c.pincode,
+                           h.name as hotel_name, b.hotel_id
+                    FROM bookings b
+                    LEFT JOIN rooms r ON b.room_id = r.id
+                    LEFT JOIN customers c ON b.customer_id = c.id
+                    LEFT JOIN hotels h ON b.hotel_id = h.id
+                    WHERE b.id = ? AND b.hotel_id = ?
+                `, [bookingId, hotelId]);
+
+                    if (fullBooking.length > 0) {
+                        const booking = fullBooking[0];
+
+                        const [adminRows] = await pool.execute(
+                            `SELECT email, name, phone FROM users 
+                         WHERE hotel_id = ? AND role = 'admin' AND status = 'active'
+                         LIMIT 1`,
+                            [hotelId]
+                        );
+
+                        const hotelAdmin = adminRows.length > 0 ? adminRows[0] : null;
+                        const hotelAdminEmail = hotelAdmin ? hotelAdmin.email : process.env.EMAIL_USER;
+                        const hotelAdminName = hotelAdmin ? hotelAdmin.name : 'Hotel Admin';
+                        const hotelAdminPhone = hotelAdmin ? hotelAdmin.phone : null;
+
+                        const hotelDetails = {
+                            name: booking.hotel_name || 'Hotel',
+                            email: hotelAdminEmail,
+                            address: ''
+                        };
+
+                        const hotelOwnerDetails = {
+                            name: hotelAdminName,
+                            email: hotelAdminEmail,
+                            phone: hotelAdminPhone
+                        };
+
+                        const customerEmail = booking.customer_email;
+                        const customerName = booking.customer_name;
+                        const customerPhone = booking.customer_phone;
+
+                        const customerDetails = {
+                            name: customerName,
+                            email: customerEmail,
+                            phone: customerPhone
+                        };
+
+                        const companyLogoBase64 = getBase64Logo();
+
+                        if (customerDetails.email) {
+                            await EmailService.sendBookingConfirmation(booking, hotelDetails, customerDetails, {
+                                companyLogoUrl: companyLogoBase64,
+                                companyName: 'Hithlaksh Solutions Private Limited',
+                                companyWebsite: 'https://hithlakshsolutions.com/',
+                                privacyLink: 'https://hithlakshsolutions.com/privacy',
+                                termsLink: 'https://hithlakshsolutions.com/terms'
+                            });
+                            console.log(`✅ Booking confirmation email sent to customer (conversion)`);
+                        }
+
+                        if (customerDetails.phone || hotelOwnerDetails.phone) {
+                            try {
+                                const whatsappResults = await WhatsAppService.sendBookingConfirmationToAll(
+                                    booking,
+                                    booking.hotel_name || 'Hotel',
+                                    customerDetails,
+                                    hotelOwnerDetails
+                                );
+
+                                if (whatsappResults.customer?.success) {
+                                    console.log(`📱 WhatsApp sent to customer: ${customerDetails.name}`);
+                                }
+                                if (whatsappResults.hotelOwner?.success) {
+                                    console.log(`📱 WhatsApp sent to hotel owner: ${hotelOwnerDetails.name}`);
+                                }
+                            } catch (whatsappError) {
+                                console.error(`❌ WhatsApp error:`, whatsappError.message);
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('❌ Error sending booking confirmations:', error);
+                }
+            }, 1000);
 
             res.json({
                 success: true,
@@ -638,9 +1403,16 @@ const advanceBookingController = {
                     advance_booking_id: id,
                     booking_id: bookingId,
                     room_number: advanceBooking.room_number,
-                    total: advanceBooking.total,
-                    advance_paid: advanceBooking.advance_amount,
-                    remaining: advanceBooking.remaining_amount
+                    full_total: fullTotal,
+                    advance_paid: advancePaid,
+                    remaining_amount: remainingAmount,
+                    payment_status: paymentStatus,
+                    payment_method: paymentMethod,
+                    advance_booking_updated: {
+                        status: 'converted',
+                        payment_status: 'completed',
+                        remaining_amount: 0
+                    }
                 }
             });
 
@@ -654,7 +1426,7 @@ const advanceBookingController = {
         }
     },
 
-    // Cancel advance booking
+
     cancelAdvanceBooking: async (req, res) => {
         try {
             const { id } = req.params;
@@ -707,6 +1479,31 @@ const advanceBookingController = {
     },
 
     // Get advance booking stats
+    // getAdvanceBookingStats: async (req, res) => {
+    //     try {
+    //         const hotelId = req.user.hotel_id;
+
+    //         // Check for expired bookings first
+    //         await AdvanceBooking.checkExpired(hotelId);
+
+    //         const stats = await AdvanceBooking.getStats(hotelId);
+
+    //         res.json({
+    //             success: true,
+    //             data: stats
+    //         });
+
+    //     } catch (error) {
+    //         console.error('❌ Get advance booking stats error:', error);
+    //         res.status(500).json({
+    //             success: false,
+    //             error: 'SERVER_ERROR',
+    //             message: 'Internal server error'
+    //         });
+    //     }
+    // },
+
+    // Get advance booking stats
     getAdvanceBookingStats: async (req, res) => {
         try {
             const hotelId = req.user.hotel_id;
@@ -715,6 +1512,11 @@ const advanceBookingController = {
             await AdvanceBooking.checkExpired(hotelId);
 
             const stats = await AdvanceBooking.getStats(hotelId);
+
+            // Get current date in IST for filtering if needed
+            const now = new Date();
+            const todayIST = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+            const todayStr = todayIST.toISOString().split('T')[0];
 
             res.json({
                 success: true,
@@ -854,7 +1656,341 @@ const advanceBookingController = {
                 message: 'Internal server error: ' + error.message
             });
         }
-    }
+    },
+
+    // controllers/advanceBookingController.js - Add this new method
+
+    // Create multiple advance bookings at once
+    createMultipleAdvanceBookings: async (req, res) => {
+        try {
+            const { bookings, groupBookingId, customerData } = req.body;
+            const hotelId = req.user.hotel_id;
+
+            console.log('📝 Create multiple advance bookings request:', {
+                hotelId,
+                roomCount: bookings.length,
+                groupBookingId,
+                customerData
+            });
+
+            // ===========================================
+            // 1. CUSTOMER HANDLING (create once for all rooms)
+            // ===========================================
+            let finalCustomerId = customerData.customer_id;
+            let isNewCustomer = false;
+
+            if (customerData.customer_name && customerData.customer_phone) {
+                const existingCustomer = await Customer.findByPhone(customerData.customer_phone, hotelId);
+
+                if (existingCustomer) {
+                    finalCustomerId = existingCustomer.id;
+                    console.log('✅ Found existing customer:', finalCustomerId);
+
+                    // Update customer if needed
+                    await Customer.update(existingCustomer.id, hotelId, {
+                        name: customerData.customer_name,
+                        phone: customerData.customer_phone,
+                        email: customerData.customer_email || existingCustomer.email,
+                        id_number: customerData.customer_id_number || existingCustomer.id_number,
+                        id_type: customerData.id_type || 'aadhaar',
+                        id_image: customerData.id_image || existingCustomer.id_image,
+                        id_image2: customerData.id_image2 || existingCustomer.id_image2,
+                        address: customerData.address || existingCustomer.address,
+                        city: customerData.city || existingCustomer.city,
+                        state: customerData.state || existingCustomer.state,
+                        pincode: customerData.pincode || existingCustomer.pincode,
+                        customer_gst_no: customerData.customer_gst_no || existingCustomer.customer_gst_no,
+                        purpose_of_visit: customerData.purpose_of_visit || existingCustomer.purpose_of_visit,
+                    });
+                } else {
+                    finalCustomerId = await Customer.create({
+                        hotel_id: hotelId,
+                        name: customerData.customer_name,
+                        phone: customerData.customer_phone,
+                        email: customerData.customer_email || '',
+                        id_number: customerData.customer_id_number || '',
+                        id_type: customerData.id_type || 'aadhaar',
+                        id_image: customerData.id_image || null,
+                        id_image2: customerData.id_image2 || null,
+                        address: customerData.address || '',
+                        city: customerData.city || '',
+                        state: customerData.state || '',
+                        pincode: customerData.pincode || '',
+                        customer_gst_no: customerData.customer_gst_no || '',
+                        purpose_of_visit: customerData.purpose_of_visit || null,
+                    });
+                    isNewCustomer = true;
+                    console.log('✅ Created new customer:', finalCustomerId);
+                }
+            }
+
+            const results = [];
+            const errors = [];
+
+            // Process each room booking
+            for (const bookingData of bookings) {
+                try {
+                    // Check room availability
+                    if (bookingData.room_id) {
+                        const room = await Room.findById(bookingData.room_id, hotelId);
+                        if (!room) {
+                            errors.push({
+                                room_id: bookingData.room_id,
+                                error: 'ROOM_NOT_FOUND',
+                                message: 'Room not found'
+                            });
+                            continue;
+                        }
+
+                        const isAvailable = await Booking.checkRoomAvailability(
+                            bookingData.room_id,
+                            hotelId,
+                            bookingData.from_date,
+                            bookingData.to_date || bookingData.from_date,
+                            null,
+                            'booked'
+                        );
+
+                        if (!isAvailable) {
+                            errors.push({
+                                room_id: bookingData.room_id,
+                                room_number: bookingData.room_number,
+                                error: 'ROOM_NOT_AVAILABLE',
+                                message: `Room ${bookingData.room_number} is not available for selected dates`
+                            });
+                            continue;
+                        }
+                    }
+
+                    // Calculate remaining amount
+                    const remaining_amount = (parseFloat(bookingData.total) || 0) - (parseFloat(bookingData.advance_amount) || 0);
+
+                    // Add note if checkout date was auto-generated
+                    let finalNotes = bookingData.notes || '';
+                    if (bookingData.is_checkout_auto_generated) {
+                        finalNotes = finalNotes
+                            ? `${finalNotes}\n[System] Checkout date was auto-generated (default 1 night stay)`
+                            : '[System] Checkout date was auto-generated (default 1 night stay)';
+                    }
+
+                    // Add group booking ID to link all rooms
+                    const advanceBookingId = await AdvanceBooking.create({
+                        hotel_id: hotelId,
+                        customer_id: finalCustomerId,
+                        room_id: bookingData.room_id,
+                        group_booking_id: groupBookingId,  // 👈 NEW: Link all rooms with same group ID
+                        from_date: bookingData.from_date,
+                        to_date: bookingData.to_date || bookingData.from_date,
+                        from_time: bookingData.from_time || '14:00',
+                        to_time: bookingData.to_time || '12:00',
+                        guests: bookingData.guests || 1,
+                        amount: parseFloat(bookingData.amount) || 0,
+                        advance_amount: parseFloat(bookingData.advance_amount) || 0,
+                        remaining_amount,
+                        service: parseFloat(bookingData.service) || 0,
+                        cgst: parseFloat(bookingData.cgst) || 0,
+                        sgst: parseFloat(bookingData.sgst) || 0,
+                        igst: parseFloat(bookingData.igst) || 0,
+                        total: parseFloat(bookingData.total) || 0,
+                        payment_method: bookingData.payment_method || 'cash',
+                        payment_status: remaining_amount <= 0 ? 'completed' : 'partial',
+                        transaction_id: bookingData.transaction_id || null,
+                        status: remaining_amount <= 0 ? 'confirmed' : 'pending',
+                        expiry_days: bookingData.expiry_days || 30,
+                        special_requests: bookingData.special_requests || '',
+                        id_type: customerData.id_type || 'aadhaar',
+                        id_number: customerData.id_number || '',
+                        id_image: customerData.id_image || null,
+                        id_image2: customerData.id_image2 || null,
+                        referral_by: bookingData.referral_by || '',
+                        referral_amount: parseFloat(bookingData.referral_amount) || 0,
+                        address: customerData.address || '',
+                        city: customerData.city || '',
+                        state: customerData.state || '',
+                        pincode: customerData.pincode || '',
+                        customer_gst_no: customerData.customer_gst_no || '',
+                        purpose_of_visit: customerData.purpose_of_visit || '',
+                        other_expenses: parseFloat(bookingData.other_expenses) || 0,
+                        expense_description: bookingData.expense_description || '',
+                        created_by: req.user.userId,
+                        notes: finalNotes
+                    });
+
+                    results.push({
+                        advanceBookingId,
+                        room_id: bookingData.room_id,
+                        room_number: bookingData.room_number,
+                        success: true
+                    });
+
+                } catch (error) {
+                    console.error('❌ Error creating advance booking for room:', bookingData.room_number, error);
+                    errors.push({
+                        room_id: bookingData.room_id,
+                        room_number: bookingData.room_number,
+                        error: error.message
+                    });
+                }
+            }
+
+            // Create a single transaction record for the entire group if advance payment made
+            const totalAdvanceAmount = bookings.reduce((sum, b) => sum + (parseFloat(b.advance_amount) || 0), 0);
+            if (totalAdvanceAmount > 0 && customerData.payment_method !== 'cash') {
+                const txnId = customerData.transaction_id || `ADV-GRP-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+                await Transaction.create({
+                    hotel_id: hotelId,
+                    booking_id: null,
+                    advance_booking_id: results[0]?.advanceBookingId, // Link to first booking
+                    customer_id: finalCustomerId,
+                    transaction_id: txnId,
+                    amount: totalAdvanceAmount,
+                    currency: 'INR',
+                    payment_method: customerData.payment_method,
+                    payment_gateway: 'upi',
+                    status: 'success',
+                    status_message: 'Group advance payment received',
+                    metadata: {
+                        type: 'group_advance_booking',
+                        group_id: groupBookingId,
+                        room_count: results.length,
+                        bookings: results.map(r => r.advanceBookingId)
+                    }
+                });
+
+                // Update all bookings with transaction ID
+                for (const result of results) {
+                    await AdvanceBooking.update(result.advanceBookingId, hotelId, {
+                        transaction_id: txnId
+                    });
+                }
+            }
+
+            res.status(201).json({
+                success: true,
+                message: `Created ${results.length} advance bookings, ${errors.length} failed`,
+                data: {
+                    groupBookingId,
+                    customerId: finalCustomerId,
+                    isNewCustomer,
+                    successful: results,
+                    failed: errors,
+                    totalAdvanceAmount
+                }
+            });
+
+        } catch (error) {
+            console.error('❌ Create multiple advance bookings error:', error);
+            res.status(500).json({
+                success: false,
+                error: 'SERVER_ERROR',
+                message: 'Internal server error: ' + error.message
+            });
+        }
+    },
+
+    // Get group advance bookings
+    getGroupAdvanceBookings: async (req, res) => {
+        try {
+            const { groupId } = req.params;
+            const hotelId = req.user.hotel_id;
+
+            const bookings = await AdvanceBooking.findByGroupId(groupId, hotelId);
+
+            if (!bookings || bookings.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'GROUP_NOT_FOUND',
+                    message: 'Group not found'
+                });
+            }
+
+            // Calculate group totals
+            const totals = bookings.reduce((acc, booking) => ({
+                totalAmount: acc.totalAmount + (parseFloat(booking.total) || 0),
+                totalAdvance: acc.totalAdvance + (parseFloat(booking.advance_amount) || 0),
+                totalRemaining: acc.totalRemaining + (parseFloat(booking.remaining_amount) || 0)
+            }), { totalAmount: 0, totalAdvance: 0, totalRemaining: 0 });
+
+            res.json({
+                success: true,
+                data: {
+                    groupId,
+                    bookings,
+                    totals,
+                    roomCount: bookings.length
+                }
+            });
+
+        } catch (error) {
+            console.error('❌ Get group advance bookings error:', error);
+            res.status(500).json({
+                success: false,
+                error: 'SERVER_ERROR',
+                message: 'Internal server error'
+            });
+        }
+    },
+
+    // controllers/advanceBookingController.js
+    checkRoomAvailabilityForAdvance: async (req, res) => {
+        try {
+            const { room_id, from_date, to_date } = req.body;
+            const hotelId = req.user.hotel_id;
+
+            // Check regular bookings
+            const isRegularBookingAvailable = await Booking.checkRoomAvailability(
+                room_id,
+                hotelId,
+                from_date,
+                to_date,
+                null,
+                'booked'
+            );
+
+            if (!isRegularBookingAvailable) {
+                return res.json({
+                    success: true,
+                    data: {
+                        available: false,
+                        reason: 'Room is already booked for these dates'
+                    }
+                });
+            }
+
+            // Check advance bookings (pending or confirmed)
+            const [advanceBookings] = await pool.execute(`
+            SELECT * FROM advance_bookings 
+            WHERE hotel_id = ? 
+            AND room_id = ?
+            AND status IN ('pending', 'confirmed')
+            AND (
+                (from_date <= ? AND to_date >= ?) OR
+                (from_date <= ? AND to_date >= ?) OR
+                (from_date >= ? AND to_date <= ?)
+            )
+        `, [hotelId, room_id, to_date, from_date, to_date, from_date, from_date, to_date]);
+
+            const isAvailable = advanceBookings.length === 0;
+
+            res.json({
+                success: true,
+                data: {
+                    available: isAvailable,
+                    reason: isAvailable ? 'Room available' : 'Room already has an advance booking',
+                    conflictingAdvanceBookings: advanceBookings
+                }
+            });
+
+        } catch (error) {
+            console.error('❌ Check advance availability error:', error);
+            res.status(500).json({
+                success: false,
+                error: 'SERVER_ERROR',
+                message: error.message
+            });
+        }
+    },
 };
 
 module.exports = advanceBookingController;

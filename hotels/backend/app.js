@@ -33,6 +33,7 @@ const whatsappTestRoutes = require('./routes/whatsappTestRoutes');
 const functionRoutes = require('./routes/functionRoomRoutes');
 const superAdminRoutes = require('./routes/superAdminRoutes');
 const advanceBookingRoutes = require('./routes/advanceBookingRoutes');
+const refundRoutes = require('./routes/refundRoutes');
 
 const { setTimezoneMiddleware } = require('./config/database');
 
@@ -57,7 +58,8 @@ const allowedOrigins = [
   'https://hms.hithlakshsolutions.com',
   'http://localhost:5174',
   'http://192.168.31.72:8080',
-  'http://hotel-management-superadmin.s3-website.ap-south-1.amazonaws.com'
+  'http://hotel-management-superadmin.s3-website.ap-south-1.amazonaws.com',
+  
 ];
 
 const corsOptions = {
@@ -81,6 +83,7 @@ app.use(helmet());
 app.use(cors(corsOptions)); // Use the CORS configuration
 app.use(morgan('combined'));
 app.use(express.json({ limit: '10mb' }));
+app.use(express.text());
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Handle preflight requests
@@ -114,6 +117,7 @@ app.use('/api/permissions', permissionRoutes);
 app.use('/api/payments', require('./routes/paymentRoutes'));
 app.use('/api/pro-payments', require('./routes/proPaymentRoutes'));
 app.use('/api/transactions', require('./routes/transactionRoutes'));
+app.use("/api/analytics", require("./routes/analyticsRoutes"));
 
 app.use('/api/reports', reportRoutes);
 app.use('/api/collections', collectionRoutes);
@@ -127,6 +131,8 @@ app.use('/api/quotations', quotations)
 app.use('/api/whatsapp', whatsappTestRoutes);
 app.use('/api/superadmin', superAdminRoutes);
 app.use('/api/advance-bookings', advanceBookingRoutes);
+app.use('/api/refunds', refundRoutes);
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({

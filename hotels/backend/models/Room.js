@@ -57,10 +57,35 @@ class Room {
   }
 
   // Update room status
-  static async updateStatus(id, hotelId, status) {
-    const [result] = await pool.execute(roomQueries.UPDATE_ROOM_STATUS, [status, id, hotelId]);
+  // static async updateStatus(id, hotelId, status) {
+  //   const [result] = await pool.execute(roomQueries.UPDATE_ROOM_STATUS, [status, id, hotelId]);
+  //   return result.affectedRows > 0;
+  // }
+
+  // Update room status
+static async updateStatus(id, hotelId, status) {
+  try {
+    console.log('🔄 Room.updateStatus called:', { id, hotelId, status });
+    
+    // Validate status
+    const validStatuses = ['available', 'booked', 'maintenance', 'blocked'];
+    if (!validStatuses.includes(status)) {
+      console.error('❌ Invalid status:', status);
+      return false;
+    }
+
+    const [result] = await pool.execute(
+      roomQueries.UPDATE_ROOM_STATUS, 
+      [status, id, hotelId]
+    );
+    
+    console.log('✅ Room status update result:', result.affectedRows > 0);
     return result.affectedRows > 0;
+  } catch (error) {
+    console.error('❌ Error in Room.updateStatus:', error);
+    throw error;
   }
+}
 
   // Delete room
   static async delete(id, hotelId) {

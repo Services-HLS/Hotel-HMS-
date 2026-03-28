@@ -43,10 +43,15 @@ router.get('/maintenance-rooms', bookingController.getMaintenanceRooms);
 // router.get('/maintenance/:id/pdf', bookingController.generateMaintenanceRoomPDF);
 // router.get('/combined-report/pdf', bookingController.generateCombinedReport);
 router.get('/block-maintenance-stats', bookingController.getBlockMaintenanceStats);
-
+// Add this route
+router.put('/:id/unblock', bookingController.unblockRoom);
 router.get('/block/:id/pdf', bookingController.generateBlockRoomPDF);
 router.get('/maintenance/:id/pdf', bookingController.generateMaintenanceRoomPDF);
 router.get('/combined-report/pdf', bookingController.generateCombinedReport);
+
+// In your routes file
+router.post('/multiple',  bookingController.createMultipleBookings);
+router.get('/group/:groupId', bookingController.getGroupBooking);
 
 
 module.exports = router;

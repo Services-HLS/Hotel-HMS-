@@ -1,3 +1,6 @@
+
+
+
 // import { useState, useEffect } from 'react';
 // import Layout from '@/components/Layout';
 // import { Button } from '@/components/ui/button';
@@ -7,6 +10,7 @@
 // import { Input } from '@/components/ui/input';
 // import { useToast } from '@/hooks/use-toast';
 // import AdvanceBookingForm from '@/components/AdvanceBookingForm';
+// import MultiAdvanceBookingForm from '@/components/MultiAdvanceBookingForm';
 // import {
 //     CalendarDays,
 //     RefreshCw,
@@ -22,10 +26,27 @@
 //     ArrowRight,
 //     Download,
 //     Eye,
-//     Loader2
+//     Loader2,
+//     Calendar as CalendarIcon,
+//     X,
+//     Layers,
+//     Plus,
+//     Home,
+//     ChevronLeft,
+//     ChevronRight,
+//     ChevronsLeft,
+//     ChevronsRight
 // } from 'lucide-react';
 // import { format } from 'date-fns';
 // import BookingForm from '@/components/BookingForm';
+// import { Calendar } from '@/components/ui/calendar';
+// import {
+//     Popover,
+//     PopoverContent,
+//     PopoverTrigger,
+// } from '@/components/ui/popover';
+// import { DateRange } from 'react-day-picker';
+// import { cn } from '@/lib/utils';
 
 // const NODE_BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000/api';
 
@@ -48,6 +69,8 @@
 //     advance_expiry_date: string;
 //     created_at: string;
 //     transaction_id: string;
+//     room_id?: number;
+//     group_booking_id?: string;
 // }
 
 // const AdvanceBookings = () => {
@@ -55,45 +78,258 @@
 //     const [bookings, setBookings] = useState<AdvanceBooking[]>([]);
 //     const [loading, setLoading] = useState(true);
 //     const [searchTerm, setSearchTerm] = useState('');
+
+//     // Pagination state
+//     const [currentPage, setCurrentPage] = useState(1);
+//     const [itemsPerPage, setItemsPerPage] = useState(10);
+
+//     // Date range state
+//     const [dateRange, setDateRange] = useState<DateRange | undefined>({
+//         from: undefined,
+//         to: undefined,
+//     });
+//     const [dateFilterType, setDateFilterType] = useState<'created' | 'booking' | 'expiry'>('created');
+
 //     const [showForm, setShowForm] = useState(false);
+//     const [showMultiForm, setShowMultiForm] = useState(false);
 //     const [rooms, setRooms] = useState<any[]>([]);
 //     const [stats, setStats] = useState<any>({});
-//     const [convertingId, setConvertingId] = useState<number | null>(null);
 //     const [showBookingForm, setShowBookingForm] = useState(false);
 //     const [selectedAdvanceForBooking, setSelectedAdvanceForBooking] = useState<any>(null);
 
+//     // Group bookings state
+//     const [groupedAdvanceBookings, setGroupedAdvanceBookings] = useState<Map<string, AdvanceBooking[]>>(new Map());
+//     const [showGroupAdvanceModal, setShowGroupAdvanceModal] = useState(false);
+//     const [selectedGroupAdvance, setSelectedGroupAdvance] = useState<any>(null);
+
+//     // Refresh trigger state
+//     const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+//     // ===== Helper function to get current user's hotel ID =====
+//     const getCurrentHotelId = (): string | null => {
+//         try {
+//             const currentUser = localStorage.getItem('currentUser');
+//             if (!currentUser) return null;
+//             const user = JSON.parse(currentUser);
+//             return user.hotel_id || user.hotelId || null;
+//         } catch (error) {
+//             console.error('Error getting hotel ID:', error);
+//             return null;
+//         }
+//     };
+
+//     // ===== Build URL with hotel_id =====
+//     const buildUrlWithHotelId = (baseUrl: string): string => {
+//         const hotelId = getCurrentHotelId();
+//         if (!hotelId) return baseUrl;
+
+//         const separator = baseUrl.includes('?') ? '&' : '?';
+//         return `${baseUrl}${separator}hotel_id=${hotelId}`;
+//     };
+
+//     const clearDateFilter = () => {
+//         setDateRange({ from: undefined, to: undefined });
+//     };
+
+//     const filterByDateRange = (booking: AdvanceBooking) => {
+//         if (!dateRange?.from && !dateRange?.to) return true;
+
+//         let bookingDate: Date | null = null;
+
+//         switch (dateFilterType) {
+//             case 'created':
+//                 bookingDate = booking.created_at ? new Date(booking.created_at) : null;
+//                 break;
+//             case 'booking':
+//                 bookingDate = booking.from_date ? new Date(booking.from_date) : null;
+//                 break;
+//             case 'expiry':
+//                 bookingDate = booking.advance_expiry_date ? new Date(booking.advance_expiry_date) : null;
+//                 break;
+//         }
+
+//         if (!bookingDate) return false;
+
+//         bookingDate.setHours(0, 0, 0, 0);
+
+//         if (dateRange.from && dateRange.to) {
+//             const from = new Date(dateRange.from);
+//             from.setHours(0, 0, 0, 0);
+//             const to = new Date(dateRange.to);
+//             to.setHours(23, 59, 59, 999);
+//             return bookingDate >= from && bookingDate <= to;
+//         } else if (dateRange.from) {
+//             const from = new Date(dateRange.from);
+//             from.setHours(0, 0, 0, 0);
+//             return bookingDate >= from;
+//         } else if (dateRange.to) {
+//             const to = new Date(dateRange.to);
+//             to.setHours(23, 59, 59, 999);
+//             return bookingDate <= to;
+//         }
+
+//         return true;
+//     };
+
+//     // Filtered bookings
+//     const filteredBookings = bookings
+//         .filter(booking =>
+//             booking.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+//             booking.customer_phone?.includes(searchTerm) ||
+//             booking.room_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+//             booking.invoice_number?.toLowerCase().includes(searchTerm.toLowerCase())
+//         )
+//         .filter(filterByDateRange);
+
+//     // Pagination calculations
+//     const totalPages = Math.ceil(filteredBookings.length / itemsPerPage);
+//     const startIndex = (currentPage - 1) * itemsPerPage;
+//     const endIndex = startIndex + itemsPerPage;
+//     const currentBookings = filteredBookings.slice(startIndex, endIndex);
+
+//     // Reset to first page when filters change
+//     useEffect(() => {
+//         setCurrentPage(1);
+//     }, [searchTerm, dateRange, dateFilterType]);
+
+//     // Function to group bookings
+//     const groupBookings = (bookingsData: AdvanceBooking[]) => {
+//         const grouped = new Map<string, AdvanceBooking[]>();
+//         bookingsData.forEach(booking => {
+//             if (booking.group_booking_id) {
+//                 if (!grouped.has(booking.group_booking_id)) {
+//                     grouped.set(booking.group_booking_id, []);
+//                 }
+//                 grouped.get(booking.group_booking_id)!.push(booking);
+//             }
+//         });
+//         setGroupedAdvanceBookings(grouped);
+//         console.log('📦 Grouped advance bookings:', Object.fromEntries(grouped));
+//     };
+
+//     // ===== fetchBookings function with proper data transformation =====
 //     const fetchBookings = async () => {
 //         setLoading(true);
 //         try {
 //             const token = localStorage.getItem('authToken');
-//             const response = await fetch(`${NODE_BACKEND_URL}/advance-bookings`, {
-//                 headers: { 'Authorization': `Bearer ${token}` }
-//             });
-//             const data = await response.json();
-//             setBookings(data.data || []);
+//             console.log('Fetching advance bookings...', new Date().toLocaleTimeString());
 
-//             // Fetch stats
-//             const statsRes = await fetch(`${NODE_BACKEND_URL}/advance-bookings/stats`, {
-//                 headers: { 'Authorization': `Bearer ${token}` }
+//             // const url = buildUrlWithHotelId(`${NODE_BACKEND_URL}/advance-bookings`);
+//             const baseUrl = buildUrlWithHotelId(`${NODE_BACKEND_URL}/advance-bookings`);
+//             const url = `${baseUrl}&_t=${Date.now()}`;
+//             console.log('Fetching from URL:', url);
+
+//             const response = await fetch(url, {
+//                 headers: {
+//                     'Authorization': `Bearer ${token}`,
+//                     'Cache-Control': 'no-cache'
+//                 }
 //             });
-//             const statsData = await statsRes.json();
-//             setStats(statsData.data || {});
+
+//             if (!response.ok) {
+//                 throw new Error(`HTTP error! status: ${response.status}`);
+//             }
+
+//             const data = await response.json();
+//             console.log('Raw API response:', data);
+
+//             const transformedData = (data.data || []).map((item: any) => ({
+//                 id: item.id,
+//                 invoice_number: item.invoice_number || `ADV-${item.id}`,
+//                 customer_name: item.customer_name || 'Unknown',
+//                 customer_phone: item.customer_phone || 'N/A',
+//                 customer_email: item.customer_email || '',
+//                 room_number: item.room_number || 'Not assigned',
+//                 room_type: item.room_type || 'Standard',
+//                 from_date: item.from_date,
+//                 to_date: item.to_date,
+//                 total: parseFloat(item.total || 0),
+//                 advance_amount: parseFloat(item.advance_amount || 0),
+//                 remaining_amount: parseFloat(item.remaining_amount || 0),
+//                 payment_method: item.payment_method || 'cash',
+//                 payment_status: item.payment_status || 'pending',
+//                 status: item.status || 'pending',
+//                 advance_expiry_date: item.advance_expiry_date,
+//                 created_at: item.created_at || new Date().toISOString(),
+//                 transaction_id: item.transaction_id,
+//                 room_id: item.room_id,
+//                 group_booking_id: item.group_booking_id || null
+//             }));
+
+//             console.log('Transformed bookings:', transformedData);
+//             setBookings(transformedData);
+//             groupBookings(transformedData);
+
+
+//             // const statsUrl = buildUrlWithHotelId(`${NODE_BACKEND_URL}/advance-bookings/stats`);
+//             const statsBaseUrl = buildUrlWithHotelId(`${NODE_BACKEND_URL}/advance-bookings/stats`);
+//             const statsUrl = `${statsBaseUrl}&_t=${Date.now()}`;
+
+//             const statsRes = await fetch(statsUrl, {
+//                 headers: {
+//                     'Authorization': `Bearer ${token}`,
+//                     'Cache-Control': 'no-cache'
+//                 }
+//             });
+
+//             if (statsRes.ok) {
+//                 const statsData = await statsRes.json();
+//                 console.log('Stats data:', statsData);
+//                 setStats(statsData.data || {});
+//             }
 
 //         } catch (error) {
-//             toast({ title: "Error", description: "Failed to load advance bookings", variant: "destructive" });
+//             console.error('Error fetching bookings:', error);
+//             toast({
+//                 title: "Error",
+//                 description: "Failed to load advance bookings",
+//                 variant: "destructive"
+//             });
 //         } finally {
 //             setLoading(false);
 //         }
 //     };
 
-//     // In AdvanceBookings.tsx - Update the fetchRooms function
+//     // Handle advance booking success
+//     const handleAdvanceBookingSuccess = async () => {
+//         console.log('Advance booking created, refreshing...');
 
+//         toast({
+//             title: "Processing",
+//             description: "Creating advance booking...",
+//         });
+
+//         setTimeout(async () => {
+//             try {
+//                 await fetchBookings();
+//                 setRefreshTrigger(prev => prev + 1);
+//                 setShowForm(false);
+//                 setShowMultiForm(false);
+
+//                 toast({
+//                     title: "✅ Success",
+//                     description: "Advance booking created successfully",
+//                     variant: "default"
+//                 });
+//             } catch (error) {
+//                 toast({
+//                     title: "Error",
+//                     description: "Failed to refresh bookings",
+//                     variant: "destructive"
+//                 });
+//             }
+//         }, 500);
+//     };
+
+//     // fetchRooms function
 //     const fetchRooms = async () => {
 //         try {
 //             const token = localStorage.getItem('authToken');
-//             console.log('Fetching rooms from:', `${NODE_BACKEND_URL}/rooms`);
+//             console.log('Fetching rooms...');
 
-//             const response = await fetch(`${NODE_BACKEND_URL}/rooms`, {
+//             const url = buildUrlWithHotelId(`${NODE_BACKEND_URL}/rooms`);
+
+//             const response = await fetch(url, {
 //                 headers: {
 //                     'Authorization': `Bearer ${token}`,
 //                     'Content-Type': 'application/json'
@@ -105,27 +341,18 @@
 //             }
 
 //             const data = await response.json();
-//             console.log('Rooms API response:', data);
 
-//             // Check the actual structure of your API response
-//             // Your API might return data in different formats
 //             let roomsData = [];
-
 //             if (data.success && Array.isArray(data.data)) {
-//                 // Format: { success: true, data: [...] }
 //                 roomsData = data.data;
 //             } else if (Array.isArray(data)) {
-//                 // Format: direct array
 //                 roomsData = data;
 //             } else if (data.data && Array.isArray(data.data)) {
-//                 // Format: { data: [...] }
 //                 roomsData = data.data;
 //             } else {
-//                 console.warn('Unexpected API response format:', data);
 //                 roomsData = [];
 //             }
 
-//             // Transform room data to ensure consistent format
 //             const transformedRooms = roomsData.map((room: any) => ({
 //                 id: room.id || room.room_id,
 //                 roomId: room.id?.toString() || room.room_id?.toString() || `room-${room.room_number}`,
@@ -150,31 +377,108 @@
 //         }
 //     };
 
+//     // Use refreshTrigger in useEffect
+//     useEffect(() => {
+//         fetchBookings();
+//     }, [refreshTrigger]);
 
-//     // Add this function before the return statement
+//     // Initial fetch for rooms
+//     useEffect(() => {
+//         fetchRooms();
+//     }, []);
+
+//     // Event listener for conversions
+//     useEffect(() => {
+//         const handleAdvanceBookingConverted = (event: CustomEvent) => {
+//             console.log('Advance booking converted, refreshing list...', event.detail);
+//             setRefreshTrigger(prev => prev + 1);
+//             toast({
+//                 title: "✅ Advance Booking Converted",
+//                 description: `Booking has been converted to regular booking`,
+//                 variant: "default"
+//             });
+//         };
+
+//         window.addEventListener('advance-booking-converted', handleAdvanceBookingConverted as EventListener);
+
+//         return () => {
+//             window.removeEventListener('advance-booking-converted', handleAdvanceBookingConverted as EventListener);
+//         };
+//     }, []);
+
 //     const handleConvertAndBook = (booking: AdvanceBooking) => {
-//         setSelectedAdvanceForBooking(booking);
+//         console.log('🔄 ===== CONVERT AND BOOK DEBUG =====');
+//         console.log('🔄 Original booking data:', JSON.stringify(booking, null, 2));
+//         console.log('🔄 Booking dates:', {
+//             from_date: booking.from_date,
+//             to_date: booking.to_date,
+//             from_date_type: typeof booking.from_date,
+//             to_date_type: typeof booking.to_date
+//         });
+
+//         const bookingCopy = { ...booking };
+
+//         // FIX: Handle timezone correctly
+//         if (bookingCopy.from_date) {
+//             // If it's an ISO string, parse it and extract the date in local timezone
+//             if (bookingCopy.from_date.includes('T')) {
+//                 const date = new Date(bookingCopy.from_date);
+//                 // Get local date components
+//                 const year = date.getFullYear();
+//                 const month = String(date.getMonth() + 1).padStart(2, '0');
+//                 const day = String(date.getDate()).padStart(2, '0');
+//                 bookingCopy.from_date = `${year}-${month}-${day}`;
+//                 console.log('🔄 Converted from_date:', {
+//                     original: booking.from_date,
+//                     parsed: date.toString(),
+//                     localDate: `${year}-${month}-${day}`
+//                 });
+//             }
+//         }
+
+//         if (bookingCopy.to_date) {
+//             if (bookingCopy.to_date.includes('T')) {
+//                 const date = new Date(bookingCopy.to_date);
+//                 const year = date.getFullYear();
+//                 const month = String(date.getMonth() + 1).padStart(2, '0');
+//                 const day = String(date.getDate()).padStart(2, '0');
+//                 bookingCopy.to_date = `${year}-${month}-${day}`;
+//                 console.log('🔄 Converted to_date:', {
+//                     original: booking.to_date,
+//                     parsed: date.toString(),
+//                     localDate: `${year}-${month}-${day}`
+//                 });
+//             }
+//         }
+
+//         console.log('🔄 Processed booking copy:', {
+//             from_date: bookingCopy.from_date,
+//             to_date: bookingCopy.to_date
+//         });
+
+//         setSelectedAdvanceForBooking(bookingCopy);
 //         setShowBookingForm(true);
 //     };
 
+//     // View group details
+//     const viewGroupDetails = (groupId: string, rooms: AdvanceBooking[]) => {
+//         const totalAmount = rooms.reduce((sum, r) => sum + (r.total || 0), 0);
+//         const totalAdvance = rooms.reduce((sum, r) => sum + (r.advance_amount || 0), 0);
+//         const totalRemaining = rooms.reduce((sum, r) => sum + (r.remaining_amount || 0), 0);
 
-//     // Also add this useEffect to fetch rooms when component mounts
-//     useEffect(() => {
-//         fetchRooms();
-//     }, []);
+//         setSelectedGroupAdvance({
+//             groupId,
+//             rooms,
+//             totalAmount,
+//             totalAdvance,
+//             totalRemaining,
+//             customerName: rooms[0]?.customer_name || 'Unknown',
+//             customerPhone: rooms[0]?.customer_phone || 'N/A'
+//         });
+//         setShowGroupAdvanceModal(true);
+//     };
 
-//     useEffect(() => {
-//         fetchBookings();
-//         fetchRooms();
-//     }, []);
-
-//     const filteredBookings = bookings.filter(booking =>
-//         booking.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-//         booking.customer_phone?.includes(searchTerm) ||
-//         booking.room_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-//         booking.invoice_number?.toLowerCase().includes(searchTerm.toLowerCase())
-//     );
-
+//     // getStatusBadge function
 //     const getStatusBadge = (status: string) => {
 //         const config: Record<string, { label: string; class: string }> = {
 //             pending: { label: 'Pending', class: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
@@ -187,6 +491,7 @@
 //         return <Badge variant="outline" className={c.class}>{c.label}</Badge>;
 //     };
 
+//     // getPaymentBadge function
 //     const getPaymentBadge = (status: string) => {
 //         const config: Record<string, { label: string; class: string }> = {
 //             pending: { label: 'Pending', class: 'bg-yellow-100 text-yellow-800' },
@@ -197,6 +502,7 @@
 //         return <Badge className={c.class}>{c.label}</Badge>;
 //     };
 
+//     // handleViewInvoice function (unchanged)
 //     const handleViewInvoice = async (booking: AdvanceBooking) => {
 //         try {
 //             setLoading(true);
@@ -208,8 +514,6 @@
 //             const result = await response.json();
 
 //             if (result.success) {
-//                 // Open invoice in a new window or modal
-//                 // Option 1: Open in new window with formatted JSON
 //                 const invoiceWindow = window.open('', '_blank');
 //                 if (invoiceWindow) {
 //                     invoiceWindow.document.write(`
@@ -340,6 +644,7 @@
 //         }
 //     };
 
+//     // handleDownloadInvoice function (unchanged)
 //     const handleDownloadInvoice = async (booking: AdvanceBooking) => {
 //         try {
 //             setLoading(true);
@@ -353,7 +658,6 @@
 //             if (result.success) {
 //                 const invoiceData = result.data;
 
-//                 // Create HTML invoice with proper styling
 //                 const htmlContent = `
 // <!DOCTYPE html>
 // <html>
@@ -592,7 +896,6 @@
 // </html>
 //             `;
 
-//                 // Create download link for HTML file
 //                 const blob = new Blob([htmlContent], { type: 'text/html' });
 //                 const url = window.URL.createObjectURL(blob);
 //                 const link = document.createElement('a');
@@ -626,27 +929,70 @@
 //         }
 //     };
 
-//     // Add this useEffect to listen for advance booking conversion events
-//     useEffect(() => {
-//         const handleAdvanceBookingConverted = (event: CustomEvent) => {
-//             console.log('Advance booking converted, refreshing list...', event.detail);
-//             fetchBookings(); // Refresh the advance bookings list
-//             // Also show a success toast
-//             toast({
-//                 title: "✅ Advance Booking Converted",
-//                 description: `Booking has been converted to regular booking`,
-//                 variant: "default"
-//             });
-//         };
+//     // Pagination component
+//     const PaginationControls = () => {
+//         if (filteredBookings.length === 0) return null;
 
-//         // Add event listener
-//         window.addEventListener('advance-booking-converted', handleAdvanceBookingConverted as EventListener);
-
-//         // Cleanup
-//         return () => {
-//             window.removeEventListener('advance-booking-converted', handleAdvanceBookingConverted as EventListener);
-//         };
-//     }, []); // Empty dependency array means this runs once on mount
+//         return (
+//             <div className="flex items-center justify-between px-2 py-4">
+//                 <div className="flex items-center gap-2">
+//                     <span className="text-sm text-muted-foreground">
+//                         Showing {startIndex + 1} to {Math.min(endIndex, filteredBookings.length)} of {filteredBookings.length} entries
+//                     </span>
+//                     <select
+//                         value={itemsPerPage}
+//                         onChange={(e) => {
+//                             setItemsPerPage(Number(e.target.value));
+//                             setCurrentPage(1);
+//                         }}
+//                         className="h-8 w-16 rounded-md border border-input bg-background px-2 text-sm"
+//                     >
+//                         <option value={5}>5</option>
+//                         <option value={10}>10</option>
+//                         <option value={20}>20</option>
+//                         <option value={50}>50</option>
+//                     </select>
+//                 </div>
+//                 <div className="flex items-center gap-2">
+//                     <Button
+//                         variant="outline"
+//                         size="sm"
+//                         onClick={() => setCurrentPage(1)}
+//                         disabled={currentPage === 1}
+//                     >
+//                         <ChevronsLeft className="h-4 w-4" />
+//                     </Button>
+//                     <Button
+//                         variant="outline"
+//                         size="sm"
+//                         onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+//                         disabled={currentPage === 1}
+//                     >
+//                         <ChevronLeft className="h-4 w-4" />
+//                     </Button>
+//                     <span className="text-sm">
+//                         Page {currentPage} of {totalPages || 1}
+//                     </span>
+//                     <Button
+//                         variant="outline"
+//                         size="sm"
+//                         onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+//                         disabled={currentPage === totalPages || totalPages === 0}
+//                     >
+//                         <ChevronRight className="h-4 w-4" />
+//                     </Button>
+//                     <Button
+//                         variant="outline"
+//                         size="sm"
+//                         onClick={() => setCurrentPage(totalPages)}
+//                         disabled={currentPage === totalPages || totalPages === 0}
+//                     >
+//                         <ChevronsRight className="h-4 w-4" />
+//                     </Button>
+//                 </div>
+//             </div>
+//         );
+//     };
 
 //     return (
 //         <Layout>
@@ -656,17 +1002,36 @@
 //                     <div>
 //                         <h1 className="text-2xl md:text-3xl font-bold">Advance Bookings</h1>
 //                         <p className="text-muted-foreground mt-1">
-//                             {loading ? 'Loading...' : `${bookings.length} advance bookings`}
+//                             {loading ? 'Loading...' : `${filteredBookings.length} advance bookings found`}
+//                             {groupedAdvanceBookings.size > 0 && ` • ${groupedAdvanceBookings.size} groups`}
 //                         </p>
 //                     </div>
 //                     <div className="flex gap-2">
-//                         <Button onClick={fetchBookings} variant="outline" disabled={loading}>
+//                         <Button onClick={() => {
+//                             setRefreshTrigger(prev => prev + 1);
+//                         }} variant="outline" disabled={loading}>
 //                             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
 //                             Refresh
 //                         </Button>
-//                         <Button onClick={() => setShowForm(true)}>
+//                         {/* Multi-Room Booking Button */}
+//                         <Button
+//                             onClick={() => setShowMultiForm(true)}
+//                             variant="default"
+//                             className="bg-purple-600 hover:bg-purple-700"
+//                             size="sm"
+//                         >
+//                             <Layers className="h-4 w-4 mr-2" />
+//                             <span className="hidden sm:inline">Multi-Room Advance</span>
+//                             <span className="sm:hidden">Multi</span>
+//                         </Button>
+//                         <Button
+//                             onClick={() => setShowForm(true)}
+//                             variant="default"
+//                             size="sm"
+//                         >
 //                             <CalendarDays className="h-4 w-4 mr-2" />
-//                             New Advance Booking
+//                             <span className="hidden sm:inline">Single-Room Advance</span>
+//                             <span className="sm:hidden">Single</span>
 //                         </Button>
 //                     </div>
 //                 </div>
@@ -678,7 +1043,7 @@
 //                             <CardContent className="p-4">
 //                                 <div className="flex justify-between items-center">
 //                                     <div>
-//                                         <p className="text-sm text-muted-foreground">Total</p>
+//                                         <p className="text-sm text-muted-foreground">Today's Total</p>
 //                                         <p className="text-2xl font-bold">{stats.total || 0}</p>
 //                                     </div>
 //                                     <CalendarDays className="h-8 w-8 text-blue-500 opacity-50" />
@@ -689,20 +1054,74 @@
 //                             <CardContent className="p-4">
 //                                 <div className="flex justify-between items-center">
 //                                     <div>
-//                                         <p className="text-sm text-muted-foreground">Advance Collected</p>
+//                                         <p className="text-sm text-muted-foreground">Today's Advance Collected</p>
 //                                         <p className="text-2xl font-bold">₹{(stats.total_advance_collected || 0).toLocaleString('en-IN')}</p>
 //                                     </div>
 //                                     <IndianRupee className="h-8 w-8 text-green-500 opacity-50" />
 //                                 </div>
 //                             </CardContent>
 //                         </Card>
-
 //                     </div>
 //                 )}
 
-//                 {/* Search */}
+//                 {/* Group Bookings Summary */}
+//                 {groupedAdvanceBookings.size > 0 && (
+//                     <Card className="bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200">
+//                         <CardContent className="p-4">
+//                             <div className="flex items-center gap-2 mb-3">
+//                                 <Badge className="bg-purple-600 text-white px-3 py-1">
+//                                     <Layers className="h-3 w-3 mr-1" />
+//                                     Group Advance Bookings
+//                                 </Badge>
+//                                 <span className="text-sm text-purple-700">
+//                                     {Array.from(groupedAdvanceBookings.values()).reduce((sum, rooms) => sum + rooms.length, 0)} rooms in {groupedAdvanceBookings.size} groups
+//                                 </span>
+//                             </div>
+
+//                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+//                                 {Array.from(groupedAdvanceBookings.entries()).map(([groupId, rooms]) => {
+//                                     const totalAmount = rooms.reduce((sum, r) => sum + (r.total || 0), 0);
+//                                     const totalAdvance = rooms.reduce((sum, r) => sum + (r.advance_amount || 0), 0);
+//                                     const customerName = rooms[0]?.customer_name || 'Unknown';
+//                                     const roomNumbers = rooms.map(r => r.room_number).join(', ');
+
+//                                     return (
+//                                         <div
+//                                             key={groupId}
+//                                             className="bg-white rounded-lg border border-purple-200 p-3 hover:shadow-md transition-shadow cursor-pointer"
+//                                             onClick={() => viewGroupDetails(groupId, rooms)}
+//                                         >
+//                                             <div className="flex justify-between items-start mb-2">
+//                                                 <Badge variant="outline" className="bg-purple-100 text-purple-800 border-purple-200">
+//                                                     Group #{groupId.slice(-8)}
+//                                                 </Badge>
+//                                                 <span className="text-xs text-gray-500">{rooms.length} rooms</span>
+//                                             </div>
+
+//                                             <p className="text-sm font-medium truncate">{customerName}</p>
+//                                             <p className="text-xs text-gray-500 mb-2">Rooms: {roomNumbers}</p>
+
+//                                             <div className="flex justify-between items-center">
+//                                                 <div>
+//                                                     <span className="text-xs text-green-600 block">Adv: ₹{totalAdvance.toLocaleString('en-IN')}</span>
+//                                                     <span className="text-xs text-orange-600">Due: ₹{(totalAmount - totalAdvance).toLocaleString('en-IN')}</span>
+//                                                 </div>
+//                                                 <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
+//                                                     <Eye className="h-3 w-3" />
+//                                                 </Button>
+//                                             </div>
+//                                         </div>
+//                                     );
+//                                 })}
+//                             </div>
+//                         </CardContent>
+//                     </Card>
+//                 )}
+
+//                 {/* Search and Filter Section */}
 //                 <Card>
-//                     <CardContent className="p-4">
+//                     <CardContent className="p-4 space-y-4">
+//                         {/* Search Input */}
 //                         <div className="relative">
 //                             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
 //                             <Input
@@ -712,132 +1131,372 @@
 //                                 className="pl-10"
 //                             />
 //                         </div>
+
+//                         {/* Calendar Filter */}
+//                         <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
+//                             {/* Date Filter Type Selector */}
+//                             <div className="flex gap-2">
+//                                 <Button
+//                                     variant={dateFilterType === 'created' ? 'default' : 'outline'}
+//                                     size="sm"
+//                                     onClick={() => setDateFilterType('created')}
+//                                 >
+//                                     Created Date
+//                                 </Button>
+//                                 <Button
+//                                     variant={dateFilterType === 'booking' ? 'default' : 'outline'}
+//                                     size="sm"
+//                                     onClick={() => setDateFilterType('booking')}
+//                                 >
+//                                     Booking Date
+//                                 </Button>
+//                                 <Button
+//                                     variant={dateFilterType === 'expiry' ? 'default' : 'outline'}
+//                                     size="sm"
+//                                     onClick={() => setDateFilterType('expiry')}
+//                                 >
+//                                     Expiry Date
+//                                 </Button>
+//                             </div>
+
+//                             {/* Date Range Picker */}
+//                             <div className="flex items-center gap-2 flex-1">
+//                                 <Popover>
+//                                     <PopoverTrigger asChild>
+//                                         <Button
+//                                             variant="outline"
+//                                             className={cn(
+//                                                 "w-full md:w-[300px] justify-start text-left font-normal",
+//                                                 !dateRange?.from && "text-muted-foreground"
+//                                             )}
+//                                         >
+//                                             <CalendarIcon className="mr-2 h-4 w-4" />
+//                                             {dateRange?.from ? (
+//                                                 dateRange.to ? (
+//                                                     <>
+//                                                         {format(dateRange.from, "dd/MM/yyyy")} -{" "}
+//                                                         {format(dateRange.to, "dd/MM/yyyy")}
+//                                                     </>
+//                                                 ) : (
+//                                                     format(dateRange.from, "dd/MM/yyyy")
+//                                                 )
+//                                             ) : (
+//                                                 <span>Pick a date range</span>
+//                                             )}
+//                                         </Button>
+//                                     </PopoverTrigger>
+//                                     <PopoverContent className="w-auto p-0" align="start">
+//                                         <Calendar
+//                                             initialFocus
+//                                             mode="range"
+//                                             defaultMonth={dateRange?.from}
+//                                             selected={dateRange}
+//                                             onSelect={setDateRange}
+//                                             numberOfMonths={2}
+//                                         />
+//                                     </PopoverContent>
+//                                 </Popover>
+
+//                                 {/* Clear Filter Button */}
+//                                 {(dateRange?.from || dateRange?.to) && (
+//                                     <Button
+//                                         variant="ghost"
+//                                         size="sm"
+//                                         onClick={clearDateFilter}
+//                                         className="h-8 px-2"
+//                                     >
+//                                         <X className="h-4 w-4 mr-1" />
+//                                         Clear
+//                                     </Button>
+//                                 )}
+//                             </div>
+//                         </div>
+
+//                         {/* Active Filter Indicator */}
+//                         {(dateRange?.from || dateRange?.to || searchTerm) && (
+//                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
+//                                 <span>Active filters:</span>
+//                                 {searchTerm && (
+//                                     <Badge variant="secondary" className="flex items-center gap-1">
+//                                         Search: "{searchTerm}"
+//                                         <X
+//                                             className="h-3 w-3 cursor-pointer"
+//                                             onClick={() => setSearchTerm('')}
+//                                         />
+//                                     </Badge>
+//                                 )}
+//                                 {dateRange?.from && (
+//                                     <Badge variant="secondary" className="flex items-center gap-1">
+//                                         {dateFilterType === 'created' ? 'Created' :
+//                                             dateFilterType === 'booking' ? 'Booking' : 'Expiry'}:
+//                                         {format(dateRange.from, "dd/MM/yyyy")}
+//                                         {dateRange.to && ` - ${format(dateRange.to, "dd/MM/yyyy")}`}
+//                                         <X
+//                                             className="h-3 w-3 cursor-pointer"
+//                                             onClick={clearDateFilter}
+//                                         />
+//                                     </Badge>
+//                                 )}
+//                             </div>
+//                         )}
 //                     </CardContent>
 //                 </Card>
 
 //                 {/* Bookings List */}
-//                 <Tabs defaultValue="all">
+//                 <Tabs defaultValue="all" key={refreshTrigger}>
 //                     <TabsList>
 //                         <TabsTrigger value="all">All</TabsTrigger>
-//                         {/* <TabsTrigger value="pending">Pending</TabsTrigger>
-//                         <TabsTrigger value="confirmed">Confirmed</TabsTrigger>
-//                         <TabsTrigger value="partial">Partial Payment</TabsTrigger> */}
 //                     </TabsList>
 
 //                     <TabsContent value="all" className="space-y-4 mt-4">
-//                         {filteredBookings.map((booking) => (
-//                             <Card key={booking.id} className="hover:shadow-md transition-shadow">
-//                                 <CardContent className="p-4">
-//                                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-//                                         <div className="space-y-2 flex-1">
-//                                             <div className="flex items-center gap-3">
-//                                                 <span className="font-mono text-sm bg-gray-100 px-2 py-1 rounded">
-//                                                     {booking.invoice_number}
-//                                                 </span>
-//                                                 {getStatusBadge(booking.status)}
-//                                                 {getPaymentBadge(booking.payment_status)}
-//                                             </div>
-
-//                                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-//                                                 <div>
-//                                                     <span className="text-muted-foreground">Customer:</span>
-//                                                     <div className="font-medium flex items-center gap-1">
-//                                                         <User className="h-3 w-3" />
-//                                                         {booking.customer_name}
-//                                                     </div>
-//                                                     <div className="text-xs flex items-center gap-1">
-//                                                         <Phone className="h-3 w-3" />
-//                                                         {booking.customer_phone}
-//                                                     </div>
-//                                                     {booking.customer_email && (
-//                                                         <div className="text-xs flex items-center gap-1">
-//                                                             <Mail className="h-3 w-3" />
-//                                                             {booking.customer_email}
-//                                                         </div>
-//                                                     )}
-//                                                 </div>
-
-//                                                 <div>
-//                                                     <span className="text-muted-foreground">Room:</span>
-//                                                     <div className="font-medium">
-//                                                         {booking.room_number || 'Not assigned'}
-//                                                         {booking.room_type && <span className="text-xs ml-1">({booking.room_type})</span>}
-//                                                     </div>
-//                                                     <div className="text-xs text-muted-foreground">
-//                                                         {booking.from_date && format(new Date(booking.from_date), 'dd MMM')} - {booking.to_date && format(new Date(booking.to_date), 'dd MMM')}
-//                                                     </div>
-//                                                 </div>
-
-//                                                 <div>
-//                                                     <span className="text-muted-foreground">Payment:</span>
-//                                                     <div className="font-medium">
-//                                                         <span className="text-green-600">Adv: ₹{booking.advance_amount}</span>
-//                                                         {booking.remaining_amount > 0 && (
-//                                                             <span className="text-orange-600 ml-2">Due: ₹{booking.remaining_amount}</span>
+//                         {loading ? (
+//                             <Card>
+//                                 <CardContent className="flex items-center justify-center py-12">
+//                                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+//                                     <span className="ml-2 text-muted-foreground">Loading bookings...</span>
+//                                 </CardContent>
+//                             </Card>
+//                         ) : (
+//                             <>
+//                                 {currentBookings.map((booking) => (
+//                                     <Card key={booking.id} className="hover:shadow-md transition-shadow">
+//                                         <CardContent className="p-4">
+//                                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+//                                                 <div className="space-y-2 flex-1">
+//                                                     <div className="flex items-center gap-3 flex-wrap">
+//                                                         <span className="font-mono text-sm bg-gray-100 px-2 py-1 rounded">
+//                                                             {booking.invoice_number}
+//                                                         </span>
+//                                                         {getStatusBadge(booking.status)}
+//                                                         {getPaymentBadge(booking.payment_status)}
+//                                                         {/* Group badge */}
+//                                                         {booking.group_booking_id && (
+//                                                             <Badge
+//                                                                 className="bg-purple-100 text-purple-800 border-purple-200 cursor-pointer"
+//                                                                 onClick={(e) => {
+//                                                                     e.stopPropagation();
+//                                                                     const groupRooms = groupedAdvanceBookings.get(booking.group_booking_id!);
+//                                                                     if (groupRooms) {
+//                                                                         viewGroupDetails(booking.group_booking_id!, groupRooms);
+//                                                                     }
+//                                                                 }}
+//                                                             >
+//                                                                 <Layers className="h-3 w-3 mr-1" />
+//                                                                 Group
+//                                                             </Badge>
 //                                                         )}
 //                                                     </div>
-//                                                     <div className="text-xs text-muted-foreground">
-//                                                         Total: ₹{booking.total}
+
+//                                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+//                                                         <div>
+//                                                             <span className="text-muted-foreground">Customer:</span>
+//                                                             <div className="font-medium flex items-center gap-1">
+//                                                                 <User className="h-3 w-3" />
+//                                                                 {booking.customer_name}
+//                                                             </div>
+//                                                             <div className="text-xs flex items-center gap-1">
+//                                                                 <Phone className="h-3 w-3" />
+//                                                                 {booking.customer_phone}
+//                                                             </div>
+//                                                             {booking.customer_email && (
+//                                                                 <div className="text-xs flex items-center gap-1">
+//                                                                     <Mail className="h-3 w-3" />
+//                                                                     {booking.customer_email}
+//                                                                 </div>
+//                                                             )}
+//                                                         </div>
+
+//                                                         <div>
+//                                                             <span className="text-muted-foreground">Room:</span>
+//                                                             <div className="font-medium">
+//                                                                 {booking.room_number || 'Not assigned'}
+//                                                                 {booking.room_type && <span className="text-xs ml-1">({booking.room_type})</span>}
+//                                                             </div>
+//                                                             <div className="text-xs text-muted-foreground">
+//                                                                 {booking.from_date && format(new Date(booking.from_date), 'dd MMM')} - {booking.to_date && format(new Date(booking.to_date), 'dd MMM')}
+//                                                             </div>
+//                                                         </div>
+
+//                                                         <div>
+//                                                             <span className="text-muted-foreground">Payment:</span>
+//                                                             <div className="font-medium">
+//                                                                 {/* 👇 MODIFIED: Show only total amount for converted bookings */}
+//                                                                 {booking.status === 'converted' ? (
+//                                                                     <span className="text-blue-600">₹{booking.total}</span>
+//                                                                 ) : (
+//                                                                     <>
+//                                                                         <span className="text-green-600">Adv: ₹{booking.advance_amount}</span>
+//                                                                         {booking.remaining_amount > 0 && (
+//                                                                             <span className="text-orange-600 ml-2">Due: ₹{booking.remaining_amount}</span>
+//                                                                         )}
+//                                                                     </>
+//                                                                 )}
+//                                                             </div>
+//                                                             <div className="text-xs text-muted-foreground">
+//                                                                 Total: ₹{booking.total}
+//                                                             </div>
+//                                                         </div>
+
+//                                                         <div>
+//                                                             <span className="text-muted-foreground">Expires:</span>
+//                                                             <div className="font-medium">
+//                                                                 {booking.advance_expiry_date ? format(new Date(booking.advance_expiry_date), 'dd MMM yyyy') : 'N/A'}
+//                                                             </div>
+//                                                             <div className="text-xs text-muted-foreground">
+//                                                                 Created: {format(new Date(booking.created_at), 'dd MMM yyyy')}
+//                                                             </div>
+//                                                         </div>
 //                                                     </div>
 //                                                 </div>
 
-//                                                 <div>
-//                                                     <span className="text-muted-foreground">Expires:</span>
-//                                                     <div className="font-medium">
-//                                                         {booking.advance_expiry_date ? format(new Date(booking.advance_expiry_date), 'dd MMM yyyy') : 'N/A'}
-//                                                     </div>
-//                                                     <div className="text-xs text-muted-foreground">
-//                                                         Created: {format(new Date(booking.created_at), 'dd MMM yyyy')}
-//                                                     </div>
+//                                                 <div className="flex gap-2">
+//                                                     <Button size="sm" variant="outline" onClick={() => handleViewInvoice(booking)}>
+//                                                         <Eye className="h-4 w-4 mr-2" />
+//                                                         View
+//                                                     </Button>
+//                                                     <Button size="sm" variant="outline" onClick={() => handleDownloadInvoice(booking)}>
+//                                                         <Download className="h-4 w-4 mr-2" />
+//                                                         Invoice
+//                                                     </Button>
+//                                                     {booking.status === 'pending' && (
+//                                                         <Button
+//                                                             size="sm"
+//                                                             className="bg-green-600 hover:bg-green-700"
+//                                                             onClick={() => handleConvertAndBook(booking)}
+//                                                         >
+//                                                             <ArrowRight className="h-4 w-4 mr-2" />
+//                                                             Convert & Book
+//                                                         </Button>
+//                                                     )}
 //                                                 </div>
 //                                             </div>
-//                                         </div>
+//                                         </CardContent>
+//                                     </Card>
+//                                 ))}
 
-//                                         <div className="flex gap-2">
-//                                             <Button size="sm" variant="outline" onClick={() => handleViewInvoice(booking)}>
-//                                                 <Eye className="h-4 w-4 mr-2" />
-//                                                 View
-//                                             </Button>
-//                                             <Button size="sm" variant="outline" onClick={() => handleDownloadInvoice(booking)}>
-//                                                 <Download className="h-4 w-4 mr-2" />
-//                                                 Invoice
-//                                             </Button>
-//                                             {booking.status === 'pending' && (
-//                                                 <Button
-//                                                     size="sm"
-//                                                     className="bg-green-600 hover:bg-green-700"
-//                                                     onClick={() => handleConvertAndBook(booking)}
-//                                                 >
-//                                                     <ArrowRight className="h-4 w-4 mr-2" />
-//                                                     Convert & Book
+//                                 {filteredBookings.length === 0 && (
+//                                     <Card>
+//                                         <CardContent className="flex flex-col items-center justify-center py-12">
+//                                             <CalendarDays className="h-12 w-12 text-muted-foreground mb-4" />
+//                                             <h3 className="text-lg font-semibold">No advance bookings found</h3>
+//                                             <p className="text-muted-foreground mb-4">
+//                                                 {searchTerm || dateRange?.from ? 'Try adjusting your filters' : 'Create your first advance booking'}
+//                                             </p>
+//                                             <div className="flex gap-2">
+//                                                 <Button onClick={() => setShowMultiForm(true)} variant="outline" className="bg-purple-600 hover:bg-purple-700 text-white">
+//                                                     <Layers className="h-4 w-4 mr-2" />
+//                                                     Multi-Room Advance
 //                                                 </Button>
-//                                             )}
-//                                         </div>
-//                                     </div>
-//                                 </CardContent>
-//                             </Card>
-//                         ))}
+//                                                 <Button onClick={() => setShowForm(true)}>
+//                                                     New Advance Booking
+//                                                 </Button>
+//                                             </div>
+//                                         </CardContent>
+//                                     </Card>
+//                                 )}
 
-//                         {filteredBookings.length === 0 && !loading && (
-//                             <Card>
-//                                 <CardContent className="flex flex-col items-center justify-center py-12">
-//                                     <CalendarDays className="h-12 w-12 text-muted-foreground mb-4" />
-//                                     <h3 className="text-lg font-semibold">No advance bookings found</h3>
-//                                     <p className="text-muted-foreground mb-4">
-//                                         {searchTerm ? 'Try a different search term' : 'Create your first advance booking'}
-//                                     </p>
-//                                     <Button onClick={() => setShowForm(true)}>
-//                                         New Advance Booking
-//                                     </Button>
-//                                 </CardContent>
-//                             </Card>
+//                                 {/* Pagination Controls */}
+//                                 {filteredBookings.length > 0 && <PaginationControls />}
+//                             </>
 //                         )}
 //                     </TabsContent>
 //                 </Tabs>
-
 //             </div>
 
+//             {/* Group Advance Details Modal */}
+//             {showGroupAdvanceModal && selectedGroupAdvance && (
+//                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+//                     <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-auto">
+//                         <div className="sticky top-0 bg-white border-b p-6 flex justify-between items-center">
+//                             <div>
+//                                 <h2 className="text-2xl font-bold">Group Advance Booking</h2>
+//                                 <p className="text-sm text-muted-foreground">
+//                                     Group ID: {selectedGroupAdvance.groupId} • {selectedGroupAdvance.rooms.length} Rooms
+//                                 </p>
+//                             </div>
+//                             <Button
+//                                 variant="ghost"
+//                                 size="icon"
+//                                 onClick={() => setShowGroupAdvanceModal(false)}
+//                             >
+//                                 <X className="h-5 w-5" />
+//                             </Button>
+//                         </div>
 
+//                         <div className="p-6 space-y-6">
+//                             {/* Customer Summary */}
+//                             <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+//                                 <h3 className="font-semibold text-purple-800 mb-2">Customer Summary</h3>
+//                                 <div className="grid grid-cols-2 gap-4">
+//                                     <div>
+//                                         <p className="text-sm text-purple-600">Name</p>
+//                                         <p className="font-medium">{selectedGroupAdvance.customerName}</p>
+//                                     </div>
+//                                     <div>
+//                                         <p className="text-sm text-purple-600">Phone</p>
+//                                         <p className="font-medium">{selectedGroupAdvance.customerPhone}</p>
+//                                     </div>
+//                                 </div>
+//                             </div>
+
+//                             {/* Rooms Table */}
+//                             <div>
+//                                 <h3 className="font-semibold mb-3">Room Details</h3>
+//                                 <div className="border rounded-lg overflow-hidden">
+//                                     <table className="w-full text-sm">
+//                                         <thead className="bg-gray-100">
+//                                             <tr>
+//                                                 <th className="p-2 text-left">Room</th>
+//                                                 <th className="p-2 text-left">Dates</th>
+//                                                 <th className="p-2 text-right">Amount</th>
+//                                                 <th className="p-2 text-right">Advance</th>
+//                                                 <th className="p-2 text-right">Due</th>
+//                                                 <th className="p-2 text-center">Status</th>
+//                                             </tr>
+//                                         </thead>
+//                                         <tbody>
+//                                             {selectedGroupAdvance.rooms.map((room: any) => (
+//                                                 <tr key={room.id} className="border-t">
+//                                                     <td className="p-2">
+//                                                         Room {room.room_number}
+//                                                         <div className="text-xs text-gray-500">{room.room_type}</div>
+//                                                     </td>
+//                                                     <td className="p-2">
+//                                                         {room.from_date && format(new Date(room.from_date), 'dd MMM')} - {room.to_date && format(new Date(room.to_date), 'dd MMM')}
+//                                                     </td>
+//                                                     <td className="p-2 text-right">₹{room.total.toLocaleString('en-IN')}</td>
+//                                                     <td className="p-2 text-right text-green-600">₹{room.advance_amount.toLocaleString('en-IN')}</td>
+//                                                     <td className="p-2 text-right text-orange-600">₹{room.remaining_amount.toLocaleString('en-IN')}</td>
+//                                                     <td className="p-2 text-center">
+//                                                         {getStatusBadge(room.status)}
+//                                                     </td>
+//                                                 </tr>
+//                                             ))}
+//                                         </tbody>
+//                                         <tfoot className="bg-gray-50">
+//                                             <tr className="border-t">
+//                                                 <td colSpan={2} className="p-2 font-bold">Total</td>
+//                                                 <td className="p-2 text-right font-bold">₹{selectedGroupAdvance.totalAmount.toLocaleString('en-IN')}</td>
+//                                                 <td className="p-2 text-right font-bold text-green-600">₹{selectedGroupAdvance.totalAdvance.toLocaleString('en-IN')}</td>
+//                                                 <td className="p-2 text-right font-bold text-orange-600">₹{selectedGroupAdvance.totalRemaining.toLocaleString('en-IN')}</td>
+//                                                 <td className="p-2"></td>
+//                                             </tr>
+//                                         </tfoot>
+//                                     </table>
+//                                 </div>
+//                             </div>
+//                         </div>
+
+//                         <div className="border-t p-4 flex justify-end">
+//                             <Button variant="outline" onClick={() => setShowGroupAdvanceModal(false)}>
+//                                 Close
+//                             </Button>
+//                         </div>
+//                     </div>
+//                 </div>
+//             )}
+
+//             {/* Booking Form for Conversion */}
 //             {showBookingForm && selectedAdvanceForBooking && (
 //                 <BookingForm
 //                     roomId={selectedAdvanceForBooking.room_id?.toString() || ''}
@@ -849,7 +1508,7 @@
 //                         setSelectedAdvanceForBooking(null);
 //                     }}
 //                     onSuccess={() => {
-//                         fetchBookings(); // THIS LINE IS IMPORTANT - It refreshes the advance bookings
+//                         setRefreshTrigger(prev => prev + 1);
 //                         setShowBookingForm(false);
 //                         setSelectedAdvanceForBooking(null);
 //                     }}
@@ -858,16 +1517,20 @@
 //                 />
 //             )}
 
-
-
-//             {/* Advance Booking Form */}
+//             {/* Single Advance Booking Form */}
 //             <AdvanceBookingForm
 //                 open={showForm}
 //                 onClose={() => setShowForm(false)}
-//                 onSuccess={() => {
-//                     fetchBookings();
-//                     setShowForm(false);
-//                 }}
+//                 onSuccess={handleAdvanceBookingSuccess}
+//                 rooms={rooms}
+//                 userSource="database"
+//             />
+
+//             {/* Multi-Room Advance Booking Form */}
+//             <MultiAdvanceBookingForm
+//                 open={showMultiForm}
+//                 onClose={() => setShowMultiForm(false)}
+//                 onSuccess={handleAdvanceBookingSuccess}
 //                 rooms={rooms}
 //                 userSource="database"
 //             />
@@ -876,6 +1539,7 @@
 // };
 
 // export default AdvanceBookings;
+
 
 import { useState, useEffect } from 'react';
 import Layout from '@/components/Layout';
@@ -886,6 +1550,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import AdvanceBookingForm from '@/components/AdvanceBookingForm';
+import MultiAdvanceBookingForm from '@/components/MultiAdvanceBookingForm';
 import {
     CalendarDays,
     RefreshCw,
@@ -901,10 +1566,27 @@ import {
     ArrowRight,
     Download,
     Eye,
-    Loader2
+    Loader2,
+    Calendar as CalendarIcon,
+    X,
+    Layers,
+    Plus,
+    Home,
+    ChevronLeft,
+    ChevronRight,
+    ChevronsLeft,
+    ChevronsRight
 } from 'lucide-react';
 import { format } from 'date-fns';
 import BookingForm from '@/components/BookingForm';
+import { Calendar } from '@/components/ui/calendar';
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from '@/components/ui/popover';
+import { DateRange } from 'react-day-picker';
+import { cn } from '@/lib/utils';
 
 const NODE_BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000/api';
 
@@ -927,7 +1609,14 @@ interface AdvanceBooking {
     advance_expiry_date: string;
     created_at: string;
     transaction_id: string;
-    room_id?: number; // Add this if it exists in your data
+    room_id?: number;
+    group_booking_id?: string;
+    cancellation_reason?: string;
+    refund_amount?: number;
+    refund_method?: string;
+    refund_status?: string;
+    refund_processed_at?: string;
+    refund_id?: number;
 }
 
 const AdvanceBookings = () => {
@@ -935,72 +1624,344 @@ const AdvanceBookings = () => {
     const [bookings, setBookings] = useState<AdvanceBooking[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+
+    // Pagination state
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(10);
+
+    // Date range state
+    const [dateRange, setDateRange] = useState<DateRange | undefined>({
+        from: undefined,
+        to: undefined,
+    });
+    const [dateFilterType, setDateFilterType] = useState<'created' | 'booking' | 'expiry'>('created');
+
     const [showForm, setShowForm] = useState(false);
+    const [showMultiForm, setShowMultiForm] = useState(false);
     const [rooms, setRooms] = useState<any[]>([]);
     const [stats, setStats] = useState<any>({});
-    const [convertingId, setConvertingId] = useState<number | null>(null);
     const [showBookingForm, setShowBookingForm] = useState(false);
     const [selectedAdvanceForBooking, setSelectedAdvanceForBooking] = useState<any>(null);
-    
-    // ===== ADD THIS: Refresh trigger state =====
-    const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-    // ===== UPDATE THIS: fetchBookings function with better error handling =====
+    // Group bookings state
+    const [groupedAdvanceBookings, setGroupedAdvanceBookings] = useState<Map<string, AdvanceBooking[]>>(new Map());
+    const [showGroupAdvanceModal, setShowGroupAdvanceModal] = useState(false);
+    const [selectedGroupAdvance, setSelectedGroupAdvance] = useState<any>(null);
+
+    // Refresh trigger state
+    const [refreshTrigger, setRefreshTrigger] = useState(0);
+    
+    // Refund details modal state
+    const [showRefundDetails, setShowRefundDetails] = useState(false);
+    const [selectedRefundData, setSelectedRefundData] = useState<any>(null);
+
+    // ===== Helper function to get current user's hotel ID =====
+    const getCurrentHotelId = (): string | null => {
+        try {
+            const currentUser = localStorage.getItem('currentUser');
+            if (!currentUser) return null;
+            const user = JSON.parse(currentUser);
+            return user.hotel_id || user.hotelId || null;
+        } catch (error) {
+            console.error('Error getting hotel ID:', error);
+            return null;
+        }
+    };
+
+    // ===== Build URL with hotel_id =====
+    const buildUrlWithHotelId = (baseUrl: string): string => {
+        const hotelId = getCurrentHotelId();
+        if (!hotelId) return baseUrl;
+
+        const separator = baseUrl.includes('?') ? '&' : '?';
+        return `${baseUrl}${separator}hotel_id=${hotelId}`;
+    };
+
+    const clearDateFilter = () => {
+        setDateRange({ from: undefined, to: undefined });
+    };
+
+    const filterByDateRange = (booking: AdvanceBooking) => {
+        if (!dateRange?.from && !dateRange?.to) return true;
+
+        let bookingDate: Date | null = null;
+
+        switch (dateFilterType) {
+            case 'created':
+                bookingDate = booking.created_at ? new Date(booking.created_at) : null;
+                break;
+            case 'booking':
+                bookingDate = booking.from_date ? new Date(booking.from_date) : null;
+                break;
+            case 'expiry':
+                bookingDate = booking.advance_expiry_date ? new Date(booking.advance_expiry_date) : null;
+                break;
+        }
+
+        if (!bookingDate) return false;
+
+        bookingDate.setHours(0, 0, 0, 0);
+
+        if (dateRange.from && dateRange.to) {
+            const from = new Date(dateRange.from);
+            from.setHours(0, 0, 0, 0);
+            const to = new Date(dateRange.to);
+            to.setHours(23, 59, 59, 999);
+            return bookingDate >= from && bookingDate <= to;
+        } else if (dateRange.from) {
+            const from = new Date(dateRange.from);
+            from.setHours(0, 0, 0, 0);
+            return bookingDate >= from;
+        } else if (dateRange.to) {
+            const to = new Date(dateRange.to);
+            to.setHours(23, 59, 59, 999);
+            return bookingDate <= to;
+        }
+
+        return true;
+    };
+
+    // Filtered bookings
+    const filteredBookings = bookings
+        .filter(booking =>
+            booking.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            booking.customer_phone?.includes(searchTerm) ||
+            booking.room_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            booking.invoice_number?.toLowerCase().includes(searchTerm.toLowerCase())
+        )
+        .filter(filterByDateRange);
+
+    // Pagination calculations
+    const totalPages = Math.ceil(filteredBookings.length / itemsPerPage);
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const currentBookings = filteredBookings.slice(startIndex, endIndex);
+
+    // Reset to first page when filters change
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, dateRange, dateFilterType]);
+
+    // Function to group bookings
+    const groupBookings = (bookingsData: AdvanceBooking[]) => {
+        const grouped = new Map<string, AdvanceBooking[]>();
+        bookingsData.forEach(booking => {
+            if (booking.group_booking_id) {
+                if (!grouped.has(booking.group_booking_id)) {
+                    grouped.set(booking.group_booking_id, []);
+                }
+                grouped.get(booking.group_booking_id)!.push(booking);
+            }
+        });
+        setGroupedAdvanceBookings(grouped);
+        console.log('📦 Grouped advance bookings:', Object.fromEntries(grouped));
+    };
+
+    // ===== fetchBookings function with refund data =====
     const fetchBookings = async () => {
         setLoading(true);
         try {
             const token = localStorage.getItem('authToken');
             console.log('Fetching advance bookings...', new Date().toLocaleTimeString());
-            
-            const response = await fetch(`${NODE_BACKEND_URL}/advance-bookings`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+
+            const baseUrl = buildUrlWithHotelId(`${NODE_BACKEND_URL}/advance-bookings`);
+            const url = `${baseUrl}&_t=${Date.now()}`;
+            console.log('Fetching from URL:', url);
+
+            const response = await fetch(url, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Cache-Control': 'no-cache'
+                }
             });
-            
+
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
-            
+
             const data = await response.json();
-            console.log('Fetched bookings count:', data.data?.length || 0);
-            setBookings(data.data || []);
+            console.log('Raw API response:', data);
+
+            // Transform basic booking data
+            const baseBookings = (data.data || []).map((item: any) => ({
+                id: item.id,
+                invoice_number: item.invoice_number || `ADV-${item.id}`,
+                customer_name: item.customer_name || 'Unknown',
+                customer_phone: item.customer_phone || 'N/A',
+                customer_email: item.customer_email || '',
+                room_number: item.room_number || 'Not assigned',
+                room_type: item.room_type || 'Standard',
+                from_date: item.from_date,
+                to_date: item.to_date,
+                total: parseFloat(item.total || 0),
+                advance_amount: parseFloat(item.advance_amount || 0),
+                remaining_amount: parseFloat(item.remaining_amount || 0),
+                payment_method: item.payment_method || 'cash',
+                payment_status: item.payment_status || 'pending',
+                status: item.status || 'pending',
+                advance_expiry_date: item.advance_expiry_date,
+                created_at: item.created_at || new Date().toISOString(),
+                transaction_id: item.transaction_id,
+                room_id: item.room_id,
+                group_booking_id: item.group_booking_id || null,
+                cancellation_reason: item.cancellation_reason || null
+            }));
+
+            // Get IDs of cancelled bookings to fetch refunds
+            const cancelledBookingIds = baseBookings
+                .filter((b: AdvanceBooking) => b.status === 'cancelled')
+                .map((b: AdvanceBooking) => b.id);
+            
+            console.log('Cancelled booking IDs:', cancelledBookingIds);
+            
+            // Fetch refunds for cancelled bookings from the correct endpoint
+            let refundMap = new Map();
+            if (cancelledBookingIds.length > 0) {
+                try {
+                    // Build query string for multiple booking IDs
+                    const bookingIdsParam = cancelledBookingIds.join(',');
+                    const refundUrl = `${NODE_BACKEND_URL}/refunds/refunds/history?booking_ids=${bookingIdsParam}&booking_type=advance`;
+                    console.log('Fetching refunds from:', refundUrl);
+                    
+                    const refundResponse = await fetch(refundUrl, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    
+                    if (refundResponse.ok) {
+                        const refundResult = await refundResponse.json();
+                        console.log('Refund data:', refundResult);
+                        
+                        if (refundResult.success && refundResult.data) {
+                            refundResult.data.forEach((refund: any) => {
+                                refundMap.set(refund.booking_id, refund);
+                            });
+                        }
+                    } else {
+                        console.log('Refund endpoint returned:', refundResponse.status);
+                    }
+                } catch (refundError) {
+                    console.error('Error fetching refunds:', refundError);
+                }
+            }
+            
+            // Merge refund data with bookings
+            const transformedData = baseBookings.map((booking: AdvanceBooking) => {
+                if (booking.status === 'cancelled') {
+                    const refund = refundMap.get(booking.id);
+                    if (refund) {
+                        return {
+                            ...booking,
+                            refund_amount: refund.refund_amount,
+                            refund_method: refund.refund_method,
+                            refund_status: refund.refund_status,
+                            refund_processed_at: refund.processed_at,
+                            refund_id: refund.id
+                        };
+                    }
+                }
+                return booking;
+            });
+
+            console.log('Transformed bookings with refund data:', transformedData);
+            setBookings(transformedData);
+            groupBookings(transformedData);
 
             // Fetch stats
-            const statsRes = await fetch(`${NODE_BACKEND_URL}/advance-bookings/stats`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+            const statsBaseUrl = buildUrlWithHotelId(`${NODE_BACKEND_URL}/advance-bookings/stats`);
+            const statsUrl = `${statsBaseUrl}&_t=${Date.now()}`;
+
+            const statsRes = await fetch(statsUrl, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Cache-Control': 'no-cache'
+                }
             });
-            const statsData = await statsRes.json();
-            setStats(statsData.data || {});
+
+            if (statsRes.ok) {
+                const statsData = await statsRes.json();
+                console.log('Stats data:', statsData);
+                setStats(statsData.data || {});
+            }
 
         } catch (error) {
             console.error('Error fetching bookings:', error);
-            toast({ 
-                title: "Error", 
-                description: "Failed to load advance bookings", 
-                variant: "destructive" 
+            toast({
+                title: "Error",
+                description: "Failed to load advance bookings",
+                variant: "destructive"
             });
         } finally {
             setLoading(false);
         }
     };
 
-    // ===== ADD THIS: New handler for advance booking success =====
+    // View refund details
+    const viewRefundDetails = (booking: AdvanceBooking) => {
+        if (booking.refund_id) {
+            setSelectedRefundData({
+                refund_amount: booking.refund_amount,
+                refund_method: booking.refund_method,
+                refund_status: booking.refund_status,
+                processed_at: booking.refund_processed_at,
+                transaction_id: booking.transaction_id,
+                refund_reason: booking.cancellation_reason,
+                booking_id: booking.id,
+                invoice_number: booking.invoice_number,
+                customer_name: booking.customer_name
+            });
+            setShowRefundDetails(true);
+        }
+    };
+
+    // Get refund badge
+    const getRefundBadge = (booking: AdvanceBooking) => {
+        if (booking.status !== 'cancelled') return null;
+
+        if (!booking.refund_amount || booking.refund_amount === 0) {
+            return (
+                <Badge className="bg-gray-100 text-gray-800 border-gray-200 cursor-pointer" onClick={() => viewRefundDetails(booking)}>
+                    No Refund
+                </Badge>
+            );
+        }
+
+        const refundStatusConfig: Record<string, { label: string; class: string }> = {
+            completed: { label: 'Refunded', class: 'bg-green-100 text-green-800 border-green-200' },
+            pending: { label: 'Refund Pending', class: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
+            failed: { label: 'Refund Failed', class: 'bg-red-100 text-red-800 border-red-200' }
+        };
+
+        const config = refundStatusConfig[booking.refund_status || 'pending'] ||
+            { label: 'Refund Pending', class: 'bg-yellow-100 text-yellow-800 border-yellow-200' };
+
+        return (
+            <Badge 
+                variant="outline" 
+                className={`${config.class} cursor-pointer hover:opacity-80`}
+                onClick={() => viewRefundDetails(booking)}
+            >
+                <IndianRupee className="h-3 w-3 mr-1" />
+                Refund: ₹{booking.refund_amount} ({config.label})
+            </Badge>
+        );
+    };
+
+    // Handle advance booking success
     const handleAdvanceBookingSuccess = async () => {
-        console.log('Advance booking created, refreshing with delay...');
-        
-        // Show a loading toast
+        console.log('Advance booking created, refreshing...');
+
         toast({
             title: "Processing",
             description: "Creating advance booking...",
         });
-        
-        // Add a small delay to ensure backend has processed the booking
+
         setTimeout(async () => {
             try {
                 await fetchBookings();
-                // Increment refresh trigger to force re-render
                 setRefreshTrigger(prev => prev + 1);
                 setShowForm(false);
-                
+                setShowMultiForm(false);
+
                 toast({
                     title: "✅ Success",
                     description: "Advance booking created successfully",
@@ -1013,16 +1974,18 @@ const AdvanceBookings = () => {
                     variant: "destructive"
                 });
             }
-        }, 500); // Half second delay
+        }, 500);
     };
 
-    // ===== UPDATE THIS: fetchRooms function (keep as is) =====
+    // fetchRooms function
     const fetchRooms = async () => {
         try {
             const token = localStorage.getItem('authToken');
-            console.log('Fetching rooms from:', `${NODE_BACKEND_URL}/rooms`);
+            console.log('Fetching rooms...');
 
-            const response = await fetch(`${NODE_BACKEND_URL}/rooms`, {
+            const url = buildUrlWithHotelId(`${NODE_BACKEND_URL}/rooms`);
+
+            const response = await fetch(url, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
@@ -1034,10 +1997,8 @@ const AdvanceBookings = () => {
             }
 
             const data = await response.json();
-            console.log('Rooms API response:', data);
 
             let roomsData = [];
-
             if (data.success && Array.isArray(data.data)) {
                 roomsData = data.data;
             } else if (Array.isArray(data)) {
@@ -1045,7 +2006,6 @@ const AdvanceBookings = () => {
             } else if (data.data && Array.isArray(data.data)) {
                 roomsData = data.data;
             } else {
-                console.warn('Unexpected API response format:', data);
                 roomsData = [];
             }
 
@@ -1073,21 +2033,20 @@ const AdvanceBookings = () => {
         }
     };
 
-    // ===== UPDATE THIS: Use refreshTrigger in useEffect =====
+    // Use refreshTrigger in useEffect
     useEffect(() => {
         fetchBookings();
-    }, [refreshTrigger]); // This will run whenever refreshTrigger changes
+    }, [refreshTrigger]);
 
-    // ===== KEEP THIS: Initial fetch for rooms =====
+    // Initial fetch for rooms
     useEffect(() => {
         fetchRooms();
     }, []);
 
-    // ===== UPDATE THIS: Event listener for conversions =====
+    // Event listener for conversions
     useEffect(() => {
         const handleAdvanceBookingConverted = (event: CustomEvent) => {
             console.log('Advance booking converted, refreshing list...', event.detail);
-            // Increment refresh trigger to force re-fetch
             setRefreshTrigger(prev => prev + 1);
             toast({
                 title: "✅ Advance Booking Converted",
@@ -1101,23 +2060,79 @@ const AdvanceBookings = () => {
         return () => {
             window.removeEventListener('advance-booking-converted', handleAdvanceBookingConverted as EventListener);
         };
-    }, []); // Empty dependency array
+    }, []);
 
-    // ===== KEEP THIS: handleConvertAndBook function =====
     const handleConvertAndBook = (booking: AdvanceBooking) => {
-        setSelectedAdvanceForBooking(booking);
+        console.log('🔄 ===== CONVERT AND BOOK DEBUG =====');
+        console.log('🔄 Original booking data:', JSON.stringify(booking, null, 2));
+        console.log('🔄 Booking dates:', {
+            from_date: booking.from_date,
+            to_date: booking.to_date,
+            from_date_type: typeof booking.from_date,
+            to_date_type: typeof booking.to_date
+        });
+
+        const bookingCopy = { ...booking };
+
+        // FIX: Handle timezone correctly
+        if (bookingCopy.from_date) {
+            if (bookingCopy.from_date.includes('T')) {
+                const date = new Date(bookingCopy.from_date);
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                bookingCopy.from_date = `${year}-${month}-${day}`;
+                console.log('🔄 Converted from_date:', {
+                    original: booking.from_date,
+                    parsed: date.toString(),
+                    localDate: `${year}-${month}-${day}`
+                });
+            }
+        }
+
+        if (bookingCopy.to_date) {
+            if (bookingCopy.to_date.includes('T')) {
+                const date = new Date(bookingCopy.to_date);
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                bookingCopy.to_date = `${year}-${month}-${day}`;
+                console.log('🔄 Converted to_date:', {
+                    original: booking.to_date,
+                    parsed: date.toString(),
+                    localDate: `${year}-${month}-${day}`
+                });
+            }
+        }
+
+        console.log('🔄 Processed booking copy:', {
+            from_date: bookingCopy.from_date,
+            to_date: bookingCopy.to_date
+        });
+
+        setSelectedAdvanceForBooking(bookingCopy);
         setShowBookingForm(true);
     };
 
-    // ===== KEEP THIS: filteredBookings =====
-    const filteredBookings = bookings.filter(booking =>
-        booking.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        booking.customer_phone?.includes(searchTerm) ||
-        booking.room_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        booking.invoice_number?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    // View group details
+    const viewGroupDetails = (groupId: string, rooms: AdvanceBooking[]) => {
+        const totalAmount = rooms.reduce((sum, r) => sum + (r.total || 0), 0);
+        const totalAdvance = rooms.reduce((sum, r) => sum + (r.advance_amount || 0), 0);
+        const totalRemaining = rooms.reduce((sum, r) => sum + (r.remaining_amount || 0), 0);
 
-    // ===== KEEP THIS: getStatusBadge function =====
+        setSelectedGroupAdvance({
+            groupId,
+            rooms,
+            totalAmount,
+            totalAdvance,
+            totalRemaining,
+            customerName: rooms[0]?.customer_name || 'Unknown',
+            customerPhone: rooms[0]?.customer_phone || 'N/A'
+        });
+        setShowGroupAdvanceModal(true);
+    };
+
+    // getStatusBadge function
     const getStatusBadge = (status: string) => {
         const config: Record<string, { label: string; class: string }> = {
             pending: { label: 'Pending', class: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
@@ -1130,7 +2145,7 @@ const AdvanceBookings = () => {
         return <Badge variant="outline" className={c.class}>{c.label}</Badge>;
     };
 
-    // ===== KEEP THIS: getPaymentBadge function =====
+    // getPaymentBadge function
     const getPaymentBadge = (status: string) => {
         const config: Record<string, { label: string; class: string }> = {
             pending: { label: 'Pending', class: 'bg-yellow-100 text-yellow-800' },
@@ -1141,7 +2156,7 @@ const AdvanceBookings = () => {
         return <Badge className={c.class}>{c.label}</Badge>;
     };
 
-    // ===== KEEP THIS: handleViewInvoice function =====
+    // handleViewInvoice function
     const handleViewInvoice = async (booking: AdvanceBooking) => {
         try {
             setLoading(true);
@@ -1203,42 +2218,42 @@ const AdvanceBookings = () => {
                                     <strong>Guests:</strong> ${result.data.booking.guests}</p>
                                 </div>
                                 
-                                <table>
+                                 <table>
                                     <thead>
-                                        <tr>
+                                         <tr>
                                             <th>Description</th>
-                                            <th>Amount (₹)</th>
-                                        </tr>
+                                            <th style="text-align: right;">Amount (₹)</th>
+                                         </tr>
                                     </thead>
                                     <tbody>
                                         ${result.data.charges.map(charge => `
-                                            <tr>
+                                             <tr>
                                                 <td>${charge.description}</td>
-                                                <td>₹${charge.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                                            </tr>
+                                                <td style="text-align: right;">₹${charge.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                                             </tr>
                                         `).join('')}
                                     </tbody>
                                     <tfoot>
-                                        <tr>
-                                            <td><strong>Subtotal</strong></td>
-                                            <td><strong>₹${result.data.subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Total</strong></td>
-                                            <td><strong>₹${result.data.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></td>
-                                        </tr>
+                                         <tr>
+                                            <td style="text-align: right;"><strong>Subtotal:</strong></td>
+                                            <td style="text-align: right;">₹${result.data.subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                                         </tr>
+                                        <tr class="total-row">
+                                            <td style="text-align: right;"><strong>TOTAL:</strong></td>
+                                            <td style="text-align: right;">₹${result.data.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                                         </tr>
                                         <tr style="background-color: #e8f4fd;">
-                                            <td><strong>Advance Paid</strong></td>
-                                            <td><strong>₹${result.data.advancePaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></td>
-                                        </tr>
+                                            <td style="text-align: right;"><strong>Advance Paid:</strong></td>
+                                            <td style="text-align: right;">₹${result.data.advancePaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                                         </tr>
                                         ${result.data.remainingDue > 0 ? `
                                             <tr style="background-color: #fff3cd;">
-                                                <td><strong>Remaining Due</strong></td>
-                                                <td><strong>₹${result.data.remainingDue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></td>
-                                            </tr>
+                                                <td style="text-align: right;"><strong>Remaining Due:</strong></td>
+                                                <td style="text-align: right;">₹${result.data.remainingDue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                                             </tr>
                                         ` : ''}
                                     </tfoot>
-                                </table>
+                                 </table>
                                 
                                 <div style="margin: 20px 0;">
                                     <p><strong>Payment Method:</strong> ${result.data.payment.method}<br>
@@ -1283,7 +2298,7 @@ const AdvanceBookings = () => {
         }
     };
 
-    // ===== KEEP THIS: handleDownloadInvoice function =====
+    // handleDownloadInvoice function
     const handleDownloadInvoice = async (booking: AdvanceBooking) => {
         try {
             setLoading(true);
@@ -1533,7 +2548,7 @@ const AdvanceBookings = () => {
     </div>
 </body>
 </html>
-            `;
+                `;
 
                 const blob = new Blob([htmlContent], { type: 'text/html' });
                 const url = window.URL.createObjectURL(blob);
@@ -1568,6 +2583,71 @@ const AdvanceBookings = () => {
         }
     };
 
+    // Pagination component
+    const PaginationControls = () => {
+        if (filteredBookings.length === 0) return null;
+
+        return (
+            <div className="flex items-center justify-between px-2 py-4">
+                <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">
+                        Showing {startIndex + 1} to {Math.min(endIndex, filteredBookings.length)} of {filteredBookings.length} entries
+                    </span>
+                    <select
+                        value={itemsPerPage}
+                        onChange={(e) => {
+                            setItemsPerPage(Number(e.target.value));
+                            setCurrentPage(1);
+                        }}
+                        className="h-8 w-16 rounded-md border border-input bg-background px-2 text-sm"
+                    >
+                        <option value={5}>5</option>
+                        <option value={10}>10</option>
+                        <option value={20}>20</option>
+                        <option value={50}>50</option>
+                    </select>
+                </div>
+                <div className="flex items-center gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(1)}
+                        disabled={currentPage === 1}
+                    >
+                        <ChevronsLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                        disabled={currentPage === 1}
+                    >
+                        <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="text-sm">
+                        Page {currentPage} of {totalPages || 1}
+                    </span>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                        disabled={currentPage === totalPages || totalPages === 0}
+                    >
+                        <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(totalPages)}
+                        disabled={currentPage === totalPages || totalPages === 0}
+                    >
+                        <ChevronsRight className="h-4 w-4" />
+                    </Button>
+                </div>
+            </div>
+        );
+    };
+
     return (
         <Layout>
             <div className="space-y-6">
@@ -1576,19 +2656,36 @@ const AdvanceBookings = () => {
                     <div>
                         <h1 className="text-2xl md:text-3xl font-bold">Advance Bookings</h1>
                         <p className="text-muted-foreground mt-1">
-                            {loading ? 'Loading...' : `${bookings.length} advance bookings`}
+                            {loading ? 'Loading...' : `${filteredBookings.length} advance bookings found`}
+                            {groupedAdvanceBookings.size > 0 && ` • ${groupedAdvanceBookings.size} groups`}
                         </p>
                     </div>
                     <div className="flex gap-2">
                         <Button onClick={() => {
-                            setRefreshTrigger(prev => prev + 1); // Manual refresh
+                            setRefreshTrigger(prev => prev + 1);
                         }} variant="outline" disabled={loading}>
                             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
                             Refresh
                         </Button>
-                        <Button onClick={() => setShowForm(true)}>
+                        {/* Multi-Room Booking Button */}
+                        <Button
+                            onClick={() => setShowMultiForm(true)}
+                            variant="default"
+                            className="bg-purple-600 hover:bg-purple-700"
+                            size="sm"
+                        >
+                            <Layers className="h-4 w-4 mr-2" />
+                            <span className="hidden sm:inline">Multi-Room Advance</span>
+                            <span className="sm:hidden">Multi</span>
+                        </Button>
+                        <Button
+                            onClick={() => setShowForm(true)}
+                            variant="default"
+                            size="sm"
+                        >
                             <CalendarDays className="h-4 w-4 mr-2" />
-                            New Advance Booking
+                            <span className="hidden sm:inline">Single-Room Advance</span>
+                            <span className="sm:hidden">Single</span>
                         </Button>
                     </div>
                 </div>
@@ -1600,7 +2697,7 @@ const AdvanceBookings = () => {
                             <CardContent className="p-4">
                                 <div className="flex justify-between items-center">
                                     <div>
-                                        <p className="text-sm text-muted-foreground">Total</p>
+                                        <p className="text-sm text-muted-foreground">Today's Total</p>
                                         <p className="text-2xl font-bold">{stats.total || 0}</p>
                                     </div>
                                     <CalendarDays className="h-8 w-8 text-blue-500 opacity-50" />
@@ -1611,7 +2708,7 @@ const AdvanceBookings = () => {
                             <CardContent className="p-4">
                                 <div className="flex justify-between items-center">
                                     <div>
-                                        <p className="text-sm text-muted-foreground">Advance Collected</p>
+                                        <p className="text-sm text-muted-foreground">Today's Advance Collected</p>
                                         <p className="text-2xl font-bold">₹{(stats.total_advance_collected || 0).toLocaleString('en-IN')}</p>
                                     </div>
                                     <IndianRupee className="h-8 w-8 text-green-500 opacity-50" />
@@ -1621,9 +2718,64 @@ const AdvanceBookings = () => {
                     </div>
                 )}
 
-                {/* Search */}
+                {/* Group Bookings Summary */}
+                {groupedAdvanceBookings.size > 0 && (
+                    <Card className="bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200">
+                        <CardContent className="p-4">
+                            <div className="flex items-center gap-2 mb-3">
+                                <Badge className="bg-purple-600 text-white px-3 py-1">
+                                    <Layers className="h-3 w-3 mr-1" />
+                                    Group Advance Bookings
+                                </Badge>
+                                <span className="text-sm text-purple-700">
+                                    {Array.from(groupedAdvanceBookings.values()).reduce((sum, rooms) => sum + rooms.length, 0)} rooms in {groupedAdvanceBookings.size} groups
+                                </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                {Array.from(groupedAdvanceBookings.entries()).map(([groupId, rooms]) => {
+                                    const totalAmount = rooms.reduce((sum, r) => sum + (r.total || 0), 0);
+                                    const totalAdvance = rooms.reduce((sum, r) => sum + (r.advance_amount || 0), 0);
+                                    const customerName = rooms[0]?.customer_name || 'Unknown';
+                                    const roomNumbers = rooms.map(r => r.room_number).join(', ');
+
+                                    return (
+                                        <div
+                                            key={groupId}
+                                            className="bg-white rounded-lg border border-purple-200 p-3 hover:shadow-md transition-shadow cursor-pointer"
+                                            onClick={() => viewGroupDetails(groupId, rooms)}
+                                        >
+                                            <div className="flex justify-between items-start mb-2">
+                                                <Badge variant="outline" className="bg-purple-100 text-purple-800 border-purple-200">
+                                                    Group #{groupId.slice(-8)}
+                                                </Badge>
+                                                <span className="text-xs text-gray-500">{rooms.length} rooms</span>
+                                            </div>
+
+                                            <p className="text-sm font-medium truncate">{customerName}</p>
+                                            <p className="text-xs text-gray-500 mb-2">Rooms: {roomNumbers}</p>
+
+                                            <div className="flex justify-between items-center">
+                                                <div>
+                                                    <span className="text-xs text-green-600 block">Adv: ₹${totalAdvance.toLocaleString('en-IN')}</span>
+                                                    <span className="text-xs text-orange-600">Due: ₹{(totalAmount - totalAdvance).toLocaleString('en-IN')}</span>
+                                                </div>
+                                                <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
+                                                    <Eye className="h-3 w-3" />
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {/* Search and Filter Section */}
                 <Card>
-                    <CardContent className="p-4">
+                    <CardContent className="p-4 space-y-4">
+                        {/* Search Input */}
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
                             <Input
@@ -1633,10 +2785,118 @@ const AdvanceBookings = () => {
                                 className="pl-10"
                             />
                         </div>
+
+                        {/* Calendar Filter */}
+                        <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
+                            {/* Date Filter Type Selector */}
+                            <div className="flex gap-2">
+                                <Button
+                                    variant={dateFilterType === 'created' ? 'default' : 'outline'}
+                                    size="sm"
+                                    onClick={() => setDateFilterType('created')}
+                                >
+                                    Created Date
+                                </Button>
+                                <Button
+                                    variant={dateFilterType === 'booking' ? 'default' : 'outline'}
+                                    size="sm"
+                                    onClick={() => setDateFilterType('booking')}
+                                >
+                                    Booking Date
+                                </Button>
+                                <Button
+                                    variant={dateFilterType === 'expiry' ? 'default' : 'outline'}
+                                    size="sm"
+                                    onClick={() => setDateFilterType('expiry')}
+                                >
+                                    Expiry Date
+                                </Button>
+                            </div>
+
+                            {/* Date Range Picker */}
+                            <div className="flex items-center gap-2 flex-1">
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            className={cn(
+                                                "w-full md:w-[300px] justify-start text-left font-normal",
+                                                !dateRange?.from && "text-muted-foreground"
+                                            )}
+                                        >
+                                            <CalendarIcon className="mr-2 h-4 w-4" />
+                                            {dateRange?.from ? (
+                                                dateRange.to ? (
+                                                    <>
+                                                        {format(dateRange.from, "dd/MM/yyyy")} -{" "}
+                                                        {format(dateRange.to, "dd/MM/yyyy")}
+                                                    </>
+                                                ) : (
+                                                    format(dateRange.from, "dd/MM/yyyy")
+                                                )
+                                            ) : (
+                                                <span>Pick a date range</span>
+                                            )}
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0" align="start">
+                                        <Calendar
+                                            initialFocus
+                                            mode="range"
+                                            defaultMonth={dateRange?.from}
+                                            selected={dateRange}
+                                            onSelect={setDateRange}
+                                            numberOfMonths={2}
+                                        />
+                                    </PopoverContent>
+                                </Popover>
+
+                                {/* Clear Filter Button */}
+                                {(dateRange?.from || dateRange?.to) && (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={clearDateFilter}
+                                        className="h-8 px-2"
+                                    >
+                                        <X className="h-4 w-4 mr-1" />
+                                        Clear
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Active Filter Indicator */}
+                        {(dateRange?.from || dateRange?.to || searchTerm) && (
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <span>Active filters:</span>
+                                {searchTerm && (
+                                    <Badge variant="secondary" className="flex items-center gap-1">
+                                        Search: "{searchTerm}"
+                                        <X
+                                            className="h-3 w-3 cursor-pointer"
+                                            onClick={() => setSearchTerm('')}
+                                        />
+                                    </Badge>
+                                )}
+                                {dateRange?.from && (
+                                    <Badge variant="secondary" className="flex items-center gap-1">
+                                        {dateFilterType === 'created' ? 'Created' :
+                                            dateFilterType === 'booking' ? 'Booking' : 'Expiry'}:
+                                        {format(dateRange.from, "dd/MM/yyyy")}
+                                        {dateRange.to && ` - ${format(dateRange.to, "dd/MM/yyyy")}`}
+                                        <X
+                                            className="h-3 w-3 cursor-pointer"
+                                            onClick={clearDateFilter}
+                                        />
+                                    </Badge>
+                                )}
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
 
-                {/* Bookings List - Add key prop to force re-render when refreshTrigger changes */}
+                {/* Bookings List */}
                 <Tabs defaultValue="all" key={refreshTrigger}>
                     <TabsList>
                         <TabsTrigger value="all">All</TabsTrigger>
@@ -1652,20 +2912,38 @@ const AdvanceBookings = () => {
                             </Card>
                         ) : (
                             <>
-                                {filteredBookings.map((booking) => (
+                                {currentBookings.map((booking) => (
                                     <Card key={booking.id} className="hover:shadow-md transition-shadow">
                                         <CardContent className="p-4">
                                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                                                 <div className="space-y-2 flex-1">
-                                                    <div className="flex items-center gap-3">
+                                                    <div className="flex items-center gap-3 flex-wrap">
                                                         <span className="font-mono text-sm bg-gray-100 px-2 py-1 rounded">
                                                             {booking.invoice_number}
                                                         </span>
                                                         {getStatusBadge(booking.status)}
-                                                        {getPaymentBadge(booking.payment_status)}
+                                                        {/* {getPaymentBadge(booking.payment_status)} */}
+                                                        {booking.status === 'cancelled' && getRefundBadge(booking)}
+                                                        {/* Group badge */}
+                                                        {booking.group_booking_id && (
+                                                            <Badge
+                                                                className="bg-purple-100 text-purple-800 border-purple-200 cursor-pointer"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    const groupRooms = groupedAdvanceBookings.get(booking.group_booking_id!);
+                                                                    if (groupRooms) {
+                                                                        viewGroupDetails(booking.group_booking_id!, groupRooms);
+                                                                    }
+                                                                }}
+                                                            >
+                                                                <Layers className="h-3 w-3 mr-1" />
+                                                                Group
+                                                            </Badge>
+                                                        )}
                                                     </div>
 
                                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                                        {/* Customer Section */}
                                                         <div>
                                                             <span className="text-muted-foreground">Customer:</span>
                                                             <div className="font-medium flex items-center gap-1">
@@ -1684,6 +2962,7 @@ const AdvanceBookings = () => {
                                                             )}
                                                         </div>
 
+                                                        {/* Room Section */}
                                                         <div>
                                                             <span className="text-muted-foreground">Room:</span>
                                                             <div className="font-medium">
@@ -1695,12 +2974,41 @@ const AdvanceBookings = () => {
                                                             </div>
                                                         </div>
 
+                                                        {/* Payment Section - UPDATED for cancelled bookings */}
                                                         <div>
                                                             <span className="text-muted-foreground">Payment:</span>
                                                             <div className="font-medium">
-                                                                <span className="text-green-600">Adv: ₹{booking.advance_amount}</span>
-                                                                {booking.remaining_amount > 0 && (
-                                                                    <span className="text-orange-600 ml-2">Due: ₹{booking.remaining_amount}</span>
+                                                                {booking.status === 'cancelled' ? (
+                                                                    <div className="space-y-1">
+                                                                        {booking.refund_amount && booking.refund_amount > 0 ? (
+                                                                            <>
+                                                                                <div className="text-green-600">
+                                                                                    Refund: ₹{booking.refund_amount}
+                                                                                </div>
+                                                                                <div className="text-xs text-gray-500">
+                                                                                    {booking.refund_status === 'completed' ? 'Refund Completed' :
+                                                                                        booking.refund_status === 'pending' ? 'Refund Pending' :
+                                                                                            'Refund Processed'}
+                                                                                </div>
+                                                                            </>
+                                                                        ) : (
+                                                                            <div className="text-red-600">
+                                                                                No Refund
+                                                                            </div>
+                                                                        )}
+                                                                        <div className="text-xs text-gray-500">
+                                                                            Advance: ₹{booking.advance_amount}
+                                                                        </div>
+                                                                    </div>
+                                                                ) : booking.status === 'converted' ? (
+                                                                    <span className="text-blue-600">₹{booking.total}</span>
+                                                                ) : (
+                                                                    <>
+                                                                        <span className="text-green-600">Adv: ₹{booking.advance_amount}</span>
+                                                                        {booking.remaining_amount > 0 && (
+                                                                            <span className="text-orange-600 ml-2">Due: ₹{booking.remaining_amount}</span>
+                                                                        )}
+                                                                    </>
                                                                 )}
                                                             </div>
                                                             <div className="text-xs text-muted-foreground">
@@ -1708,6 +3016,7 @@ const AdvanceBookings = () => {
                                                             </div>
                                                         </div>
 
+                                                        {/* Expires/Created Section */}
                                                         <div>
                                                             <span className="text-muted-foreground">Expires:</span>
                                                             <div className="font-medium">
@@ -1718,6 +3027,13 @@ const AdvanceBookings = () => {
                                                             </div>
                                                         </div>
                                                     </div>
+
+                                                    {/* Add cancellation reason if available */}
+                                                    {booking.status === 'cancelled' && booking.cancellation_reason && (
+                                                        <div className="mt-2 p-2 bg-red-50 rounded-md text-sm text-red-700">
+                                                            <span className="font-medium">Cancellation Reason:</span> {booking.cancellation_reason}
+                                                        </div>
+                                                    )}
                                                 </div>
 
                                                 <div className="flex gap-2">
@@ -1751,19 +3067,190 @@ const AdvanceBookings = () => {
                                             <CalendarDays className="h-12 w-12 text-muted-foreground mb-4" />
                                             <h3 className="text-lg font-semibold">No advance bookings found</h3>
                                             <p className="text-muted-foreground mb-4">
-                                                {searchTerm ? 'Try a different search term' : 'Create your first advance booking'}
+                                                {searchTerm || dateRange?.from ? 'Try adjusting your filters' : 'Create your first advance booking'}
                                             </p>
-                                            <Button onClick={() => setShowForm(true)}>
-                                                New Advance Booking
-                                            </Button>
+                                            <div className="flex gap-2">
+                                                <Button onClick={() => setShowMultiForm(true)} variant="outline" className="bg-purple-600 hover:bg-purple-700 text-white">
+                                                    <Layers className="h-4 w-4 mr-2" />
+                                                    Multi-Room Advance
+                                                </Button>
+                                                <Button onClick={() => setShowForm(true)}>
+                                                    New Advance Booking
+                                                </Button>
+                                            </div>
                                         </CardContent>
                                     </Card>
                                 )}
+
+                                {/* Pagination Controls */}
+                                {filteredBookings.length > 0 && <PaginationControls />}
                             </>
                         )}
                     </TabsContent>
                 </Tabs>
             </div>
+
+            {/* Group Advance Details Modal */}
+            {showGroupAdvanceModal && selectedGroupAdvance && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-auto">
+                        <div className="sticky top-0 bg-white border-b p-6 flex justify-between items-center">
+                            <div>
+                                <h2 className="text-2xl font-bold">Group Advance Booking</h2>
+                                <p className="text-sm text-muted-foreground">
+                                    Group ID: {selectedGroupAdvance.groupId} • {selectedGroupAdvance.rooms.length} Rooms
+                                </p>
+                            </div>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setShowGroupAdvanceModal(false)}
+                            >
+                                <X className="h-5 w-5" />
+                            </Button>
+                        </div>
+
+                        <div className="p-6 space-y-6">
+                            {/* Customer Summary */}
+                            <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                                <h3 className="font-semibold text-purple-800 mb-2">Customer Summary</h3>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <p className="text-sm text-purple-600">Name</p>
+                                        <p className="font-medium">{selectedGroupAdvance.customerName}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-sm text-purple-600">Phone</p>
+                                        <p className="font-medium">{selectedGroupAdvance.customerPhone}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Rooms Table */}
+                            <div>
+                                <h3 className="font-semibold mb-3">Room Details</h3>
+                                <div className="border rounded-lg overflow-hidden">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-gray-100">
+                                            <tr>
+                                                <th className="p-2 text-left">Room</th>
+                                                <th className="p-2 text-left">Dates</th>
+                                                <th className="p-2 text-right">Amount</th>
+                                                <th className="p-2 text-right">Advance</th>
+                                                <th className="p-2 text-right">Due</th>
+                                                <th className="p-2 text-center">Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {selectedGroupAdvance.rooms.map((room: any) => (
+                                                <tr key={room.id} className="border-t">
+                                                    <td className="p-2">
+                                                        Room {room.room_number}
+                                                        <div className="text-xs text-gray-500">{room.room_type}</div>
+                                                    </td>
+                                                    <td className="p-2">
+                                                        {room.from_date && format(new Date(room.from_date), 'dd MMM')} - {room.to_date && format(new Date(room.to_date), 'dd MMM')}
+                                                    </td>
+                                                    <td className="p-2 text-right">₹{room.total.toLocaleString('en-IN')}</td>
+                                                    <td className="p-2 text-right text-green-600">₹{room.advance_amount.toLocaleString('en-IN')}</td>
+                                                    <td className="p-2 text-right text-orange-600">₹{room.remaining_amount.toLocaleString('en-IN')}</td>
+                                                    <td className="p-2 text-center">
+                                                        {getStatusBadge(room.status)}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                        <tfoot className="bg-gray-50">
+                                            <tr className="border-t">
+                                                <td colSpan={2} className="p-2 font-bold">Total</td>
+                                                <td className="p-2 text-right font-bold">₹{selectedGroupAdvance.totalAmount.toLocaleString('en-IN')}</td>
+                                                <td className="p-2 text-right font-bold text-green-600">₹{selectedGroupAdvance.totalAdvance.toLocaleString('en-IN')}</td>
+                                                <td className="p-2 text-right font-bold text-orange-600">₹{selectedGroupAdvance.totalRemaining.toLocaleString('en-IN')}</td>
+                                                <td className="p-2"></td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="border-t p-4 flex justify-end">
+                            <Button variant="outline" onClick={() => setShowGroupAdvanceModal(false)}>
+                                Close
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Refund Details Modal */}
+            {showRefundDetails && selectedRefundData && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl max-w-md w-full">
+                        <div className="p-6">
+                            <div className="flex justify-between items-center mb-4">
+                                <h2 className="text-xl font-bold">Refund Details</h2>
+                                <Button variant="ghost" size="icon" onClick={() => setShowRefundDetails(false)}>
+                                    <X className="h-5 w-5" />
+                                </Button>
+                            </div>
+                            
+                            <div className="space-y-3">
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <p className="text-sm text-muted-foreground">Refund Amount</p>
+                                        <p className="text-lg font-bold text-green-600">₹{selectedRefundData.refund_amount}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-sm text-muted-foreground">Refund Method</p>
+                                        <p className="font-medium capitalize">{selectedRefundData.refund_method}</p>
+                                    </div>
+                                </div>
+                                
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <p className="text-sm text-muted-foreground">Refund Status</p>
+                                        <Badge className={
+                                            selectedRefundData.refund_status === 'completed' ? 'bg-green-100 text-green-800' :
+                                            selectedRefundData.refund_status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                            'bg-red-100 text-red-800'
+                                        }>
+                                            {selectedRefundData.refund_status?.toUpperCase()}
+                                        </Badge>
+                                    </div>
+                                    <div>
+                                        <p className="text-sm text-muted-foreground">Processed At</p>
+                                        <p className="font-medium">{selectedRefundData.processed_at ? format(new Date(selectedRefundData.processed_at), 'dd MMM yyyy HH:mm') : 'N/A'}</p>
+                                    </div>
+                                </div>
+                                
+                                {selectedRefundData.transaction_id && (
+                                    <div>
+                                        <p className="text-sm text-muted-foreground">Transaction ID</p>
+                                        <p className="font-mono text-sm">{selectedRefundData.transaction_id}</p>
+                                    </div>
+                                )}
+                                
+                                <div>
+                                    <p className="text-sm text-muted-foreground">Refund Reason</p>
+                                    <p className="text-sm">{selectedRefundData.refund_reason || 'Cancellation refund processed'}</p>
+                                </div>
+                                
+                                <div className="bg-gray-50 p-3 rounded-lg">
+                                    <p className="text-sm text-muted-foreground">Original Advance</p>
+                                    <p className="font-medium">₹{selectedRefundData.original_amount || 'N/A'}</p>
+                                </div>
+                            </div>
+                            
+                            <div className="mt-6 flex justify-end">
+                                <Button onClick={() => setShowRefundDetails(false)}>
+                                    Close
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Booking Form for Conversion */}
             {showBookingForm && selectedAdvanceForBooking && (
@@ -1777,7 +3264,7 @@ const AdvanceBookings = () => {
                         setSelectedAdvanceForBooking(null);
                     }}
                     onSuccess={() => {
-                        setRefreshTrigger(prev => prev + 1); // Use refresh trigger instead of direct fetch
+                        setRefreshTrigger(prev => prev + 1);
                         setShowBookingForm(false);
                         setSelectedAdvanceForBooking(null);
                     }}
@@ -1786,11 +3273,20 @@ const AdvanceBookings = () => {
                 />
             )}
 
-            {/* Advance Booking Form - UPDATED with new onSuccess handler */}
+            {/* Single Advance Booking Form */}
             <AdvanceBookingForm
                 open={showForm}
                 onClose={() => setShowForm(false)}
-                onSuccess={handleAdvanceBookingSuccess} // ← THIS IS THE IMPORTANT CHANGE
+                onSuccess={handleAdvanceBookingSuccess}
+                rooms={rooms}
+                userSource="database"
+            />
+
+            {/* Multi-Room Advance Booking Form */}
+            <MultiAdvanceBookingForm
+                open={showMultiForm}
+                onClose={() => setShowMultiForm(false)}
+                onSuccess={handleAdvanceBookingSuccess}
                 rooms={rooms}
                 userSource="database"
             />

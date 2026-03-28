@@ -1,5 +1,5 @@
 
-
+import { useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -35,6 +35,7 @@ import {
   Info,
   ChevronDown,
   ChevronUp,
+  CalendarDays,
 } from 'lucide-react';
 import { searchCustomersByPhone } from '@/lib/bookingApi';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -59,6 +60,7 @@ interface BookingFormProps {
   defaultDateRange?: DateRange;
   advanceBookingData?: any; // Data from advance booking to pre-fill
   isAdvanceConversion?: boolean; // Flag to indicate this is from advance booking
+  conversionPaymentMethod?: 'cash' | 'online';
 }
 
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxmzEN8dvGOZQKM4Dok-vf59Wvjg9uf3_hn7YWhn-WTaWL8TKl5YSSyFevYx9Ovucqb/exec';
@@ -348,6 +350,8 @@ export default function BookingForm({
   const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
   const userPlan = currentUser?.plan || 'basic';
 
+  const navigate = useNavigate();
+
   // Form steps
   const [activeStep, setActiveStep] = useState(1);
   const [idImages, setIdImages] = useState<string[]>([]);
@@ -396,6 +400,8 @@ export default function BookingForm({
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
 
 
+  const [idValidationError, setIdValidationError] = useState<string>('');
+
 
   const defaultCheckIn = preSelectedDateRange?.from ?? '';
   const defaultCheckOut = preSelectedDateRange?.to ?? '';
@@ -427,6 +433,14 @@ export default function BookingForm({
 
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleAdvanceBookingRedirect = () => {
+    // Close the current booking form
+    onClose();
+
+    // Navigate to advance bookings page
+    navigate('/advance-bookings');
+  };
 
   // Update dates when preSelectedDateRange changes
   useEffect(() => {
@@ -649,6 +663,123 @@ export default function BookingForm({
 
   // ========== PRE-FILL FORM FROM ADVANCE BOOKING ==========
 
+  // useEffect(() => {
+  //   // Check if this is an advance booking conversion
+  //   if (advanceBookingData && isAdvanceConversion) {
+  //     const advanceData = advanceBookingData;
+
+  //     console.log('📋 Pre-filling form with advance booking data:', advanceData);
+
+  //     // Format dates properly
+  //     const formatDateForInput = (dateStr: string) => {
+  //       if (!dateStr) return '';
+  //       try {
+  //         const date = new Date(dateStr);
+  //         return date.toISOString().split('T')[0];
+  //       } catch (e) {
+  //         return dateStr;
+  //       }
+  //     };
+
+  //     // Set form data from advance booking
+  //     setFormData({
+  //       customerName: advanceData.customer_name || '',
+  //       customerPhone: advanceData.customer_phone || '',
+  //       customerEmail: advanceData.customer_email || '',
+  //       idType: advanceData.id_type || 'aadhaar',
+  //       idNumber: advanceData.id_number || '',
+  //       checkInDate: formatDateForInput(advanceData.from_date) || defaultCheckIn,
+  //       checkInTime: advanceData.from_time || '14:00',
+  //       checkOutDate: formatDateForInput(advanceData.to_date) || defaultCheckOut,
+  //       checkOutTime: advanceData.to_time || '12:00',
+  //       guests: advanceData.guests || 1,
+  //       specialRequests: advanceData.special_requests || '',
+  //       address: advanceData.address || '',
+  //       city: advanceData.city || '',
+  //       state: advanceData.state || '',
+  //       pincode: advanceData.pincode || '',
+  //       customerGstNo: advanceData.customer_gst_no || '',
+  //       purposeOfVisit: advanceData.purpose_of_visit || '',
+  //       otherExpenses: advanceData.other_expenses || 0,
+  //       expenseDescription: advanceData.expense_description || '',
+  //       referralBy: advanceData.referral_by || '',
+  //       referralAmount: advanceData.referral_amount || 0
+  //     });
+
+  //     // Set room price if available
+  //     if (advanceData.amount) {
+  //       // Calculate nights for per night price
+  //       const nights = (() => {
+  //         if (!advanceData.from_date || !advanceData.to_date) return 1;
+  //         const a = new Date(advanceData.from_date);
+  //         const b = new Date(advanceData.to_date);
+  //         const diff = Math.ceil((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
+  //         return diff > 0 ? diff : 1;
+  //       })();
+
+  //       setRoomPriceEditable(advanceData.amount / nights);
+  //     }
+
+  //     // Set tax configuration
+  //     if (advanceData.cgst > 0 || advanceData.sgst > 0) {
+  //       setTaxType('cgst_sgst');
+  //       setIncludeCGST(true);
+  //       setIncludeSGST(true);
+  //       setIncludeIGST(false);
+
+  //       // Calculate percentages
+  //       const baseForTax = (advanceData.amount || 0) + (advanceData.service || 0);
+  //       if (baseForTax > 0) {
+  //         setCustomCgstPercentage((advanceData.cgst / baseForTax) * 100);
+  //         setCustomSgstPercentage((advanceData.sgst / baseForTax) * 100);
+  //         setUseCustomPercentages(true);
+  //       }
+  //     } else if (advanceData.igst > 0) {
+  //       setTaxType('igst');
+  //       setIncludeCGST(false);
+  //       setIncludeSGST(false);
+  //       setIncludeIGST(true);
+
+  //       const baseForTax = (advanceData.amount || 0) + (advanceData.service || 0);
+  //       if (baseForTax > 0) {
+  //         setCustomIgstPercentage((advanceData.igst / baseForTax) * 100);
+  //         setUseCustomPercentages(true);
+  //       }
+  //     }
+
+  //     // Set service charge
+  //     if (advanceData.service > 0) {
+  //       setIncludeServiceCharge(true);
+  //       const baseForService = advanceData.amount || 0;
+  //       if (baseForService > 0) {
+  //         setCustomServicePercentage((advanceData.service / baseForService) * 100);
+  //         setUseCustomPercentages(true);
+  //       }
+  //     }
+
+  //     // Set payment method if advance was paid
+  //     if (advanceData.payment_method) {
+  //       setPaymentMethod(advanceData.payment_method as 'cash' | 'online');
+  //     }
+
+  //     // If there are ID images, show them
+  //     if (advanceData.id_image) {
+  //       setIdImages([advanceData.id_image]);
+  //     }
+  //     if (advanceData.id_image2) {
+  //       setIdImages(prev => [...prev, advanceData.id_image2]);
+  //     }
+
+  //     // Show toast notification
+  //     toast({
+  //       title: "📋 Advance Booking Loaded",
+  //       description: `Form pre-filled with advance booking data. Advance paid: ₹${advanceData.advance_amount || 0}`,
+  //       variant: "default"
+  //     });
+  //   }
+  // }, [advanceBookingData, isAdvanceConversion]);// 👈 FIXED: Use the variable names directly, not props. // Dependencies
+
+  // ========== PRE-FILL FORM FROM ADVANCE BOOKING ==========
   useEffect(() => {
     // Check if this is an advance booking conversion
     if (advanceBookingData && isAdvanceConversion) {
@@ -667,78 +798,122 @@ export default function BookingForm({
         }
       };
 
+      // Extract all possible field names (support both backend and frontend formats)
+      const customerName = advanceData.customer_name || advanceData.customerName || '';
+      const customerPhone = advanceData.customer_phone || advanceData.customerPhone || '';
+      const customerEmail = advanceData.customer_email || advanceData.customerEmail || '';
+      const idType = advanceData.id_type || advanceData.idType || 'aadhaar';
+      const idNumber = advanceData.id_number || advanceData.idNumber || '';
+
+      // Handle dates (support multiple date field names)
+      const fromDate = advanceData.from_date || advanceData.fromDate || advanceData.checkIn || '';
+      const toDate = advanceData.to_date || advanceData.toDate || advanceData.checkOut || '';
+
+      const fromTime = advanceData.from_time || advanceData.fromTime || advanceData.checkInTime || '14:00';
+      const toTime = advanceData.to_time || advanceData.toTime || advanceData.checkOutTime || '12:00';
+
+      const guests = advanceData.guests || 1;
+      const specialRequests = advanceData.special_requests || advanceData.specialRequests || '';
+
+      // Address fields
+      const address = advanceData.address || '';
+      const city = advanceData.city || '';
+      const state = advanceData.state || '';
+      const pincode = advanceData.pincode || '';
+      const customerGstNo = advanceData.customer_gst_no || advanceData.customerGstNo || '';
+      const purposeOfVisit = advanceData.purpose_of_visit || advanceData.purposeOfVisit || '';
+
+      // Other fields
+      const otherExpenses = advanceData.other_expenses || advanceData.otherExpenses || 0;
+      const expenseDescription = advanceData.expense_description || advanceData.expenseDescription || '';
+      const referralBy = advanceData.referral_by || advanceData.referralBy || '';
+      const referralAmount = advanceData.referral_amount || advanceData.referralAmount || 0;
+
+      console.log('📋 Extracted values:', {
+        customerName, customerPhone, customerEmail, idType, idNumber,
+        fromDate, toDate, fromTime, toTime, guests,
+        address, city, state, pincode, customerGstNo, purposeOfVisit,
+        otherExpenses, expenseDescription, referralBy, referralAmount
+      });
+
       // Set form data from advance booking
       setFormData({
-        customerName: advanceData.customer_name || '',
-        customerPhone: advanceData.customer_phone || '',
-        customerEmail: advanceData.customer_email || '',
-        idType: advanceData.id_type || 'aadhaar',
-        idNumber: advanceData.id_number || '',
-        checkInDate: formatDateForInput(advanceData.from_date) || defaultCheckIn,
-        checkInTime: advanceData.from_time || '14:00',
-        checkOutDate: formatDateForInput(advanceData.to_date) || defaultCheckOut,
-        checkOutTime: advanceData.to_time || '12:00',
-        guests: advanceData.guests || 1,
-        specialRequests: advanceData.special_requests || '',
-        address: advanceData.address || '',
-        city: advanceData.city || '',
-        state: advanceData.state || '',
-        pincode: advanceData.pincode || '',
-        customerGstNo: advanceData.customer_gst_no || '',
-        purposeOfVisit: advanceData.purpose_of_visit || '',
-        otherExpenses: advanceData.other_expenses || 0,
-        expenseDescription: advanceData.expense_description || '',
-        referralBy: advanceData.referral_by || '',
-        referralAmount: advanceData.referral_amount || 0
+        customerName: customerName,
+        customerPhone: customerPhone,
+        customerEmail: customerEmail,
+        idType: idType,
+        idNumber: idNumber,
+        checkInDate: formatDateForInput(fromDate) || defaultCheckIn,
+        checkInTime: fromTime,
+        checkOutDate: formatDateForInput(toDate) || defaultCheckOut,
+        checkOutTime: toTime,
+        guests: guests,
+        specialRequests: specialRequests,
+        address: address,
+        city: city,
+        state: state,
+        pincode: pincode,
+        customerGstNo: customerGstNo,
+        purposeOfVisit: purposeOfVisit,
+        otherExpenses: otherExpenses,
+        expenseDescription: expenseDescription,
+        referralBy: referralBy,
+        referralAmount: referralAmount
       });
 
       // Set room price if available
-      if (advanceData.amount) {
+      const amount = advanceData.amount || advanceData.totalAmount || 0;
+      if (amount > 0) {
         // Calculate nights for per night price
-        const nights = (() => {
-          if (!advanceData.from_date || !advanceData.to_date) return 1;
-          const a = new Date(advanceData.from_date);
-          const b = new Date(advanceData.to_date);
+        const nightsCalc = (() => {
+          if (!fromDate || !toDate) return 1;
+          const a = new Date(fromDate);
+          const b = new Date(toDate);
           const diff = Math.ceil((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
           return diff > 0 ? diff : 1;
         })();
 
-        setRoomPriceEditable(advanceData.amount / nights);
+        setRoomPriceEditable(amount / nightsCalc);
       }
 
       // Set tax configuration
-      if (advanceData.cgst > 0 || advanceData.sgst > 0) {
+      const cgstVal = Number(advanceData.cgst) || 0;
+      const sgstVal = Number(advanceData.sgst) || 0;
+      const igstVal = Number(advanceData.igst) || 0;
+      const serviceVal = Number(advanceData.service) || 0;
+
+      if (cgstVal > 0 || sgstVal > 0) {
         setTaxType('cgst_sgst');
-        setIncludeCGST(true);
-        setIncludeSGST(true);
+        setIncludeCGST(cgstVal > 0);
+        setIncludeSGST(sgstVal > 0);
         setIncludeIGST(false);
 
         // Calculate percentages
-        const baseForTax = (advanceData.amount || 0) + (advanceData.service || 0);
+        const baseForTax = (Number(advanceData.amount) || 0) + (Number(advanceData.service) || 0);
         if (baseForTax > 0) {
-          setCustomCgstPercentage((advanceData.cgst / baseForTax) * 100);
-          setCustomSgstPercentage((advanceData.sgst / baseForTax) * 100);
+          setCustomCgstPercentage((cgstVal / baseForTax) * 100);
+          setCustomSgstPercentage((sgstVal / baseForTax) * 100);
           setUseCustomPercentages(true);
         }
-      } else if (advanceData.igst > 0) {
+      } else if (igstVal > 0) {
         setTaxType('igst');
         setIncludeCGST(false);
         setIncludeSGST(false);
         setIncludeIGST(true);
 
-        const baseForTax = (advanceData.amount || 0) + (advanceData.service || 0);
+        const baseForTax = (Number(advanceData.amount) || 0) + (Number(advanceData.service) || 0);
         if (baseForTax > 0) {
-          setCustomIgstPercentage((advanceData.igst / baseForTax) * 100);
+          setCustomIgstPercentage((igstVal / baseForTax) * 100);
           setUseCustomPercentages(true);
         }
       }
 
       // Set service charge
-      if (advanceData.service > 0) {
+      if (serviceVal > 0) {
         setIncludeServiceCharge(true);
-        const baseForService = advanceData.amount || 0;
+        const baseForService = Number(advanceData.amount) || 0;
         if (baseForService > 0) {
-          setCustomServicePercentage((advanceData.service / baseForService) * 100);
+          setCustomServicePercentage((serviceVal / baseForService) * 100);
           setUseCustomPercentages(true);
         }
       }
@@ -759,11 +934,12 @@ export default function BookingForm({
       // Show toast notification
       toast({
         title: "📋 Advance Booking Loaded",
-        description: `Form pre-filled with advance booking data. Advance paid: ₹${advanceData.advance_amount || 0}`,
+        description: `Form pre-filled with advance booking data. Advance paid: ₹${advanceData.advance_amount || advanceData.advanceAmount || 0}`,
         variant: "default"
       });
     }
-  }, [advanceBookingData, isAdvanceConversion]);// 👈 FIXED: Use the variable names directly, not props. // Dependencies
+  }, [advanceBookingData, isAdvanceConversion]);
+
 
   // ========== CALCULATE CHARGES WITH CGST AND SGST ==========
   // const calculateCharges = () => {
@@ -859,8 +1035,46 @@ export default function BookingForm({
 
   const charges = calculateCharges();
 
-  const handleChange = (field: string, value: string | number) =>
+  // const handleChange = (field: string, value: string | number) =>
+  //   setFormData((prev) => ({ ...prev, [field]: value }));
+
+
+  // Replace your existing handleChange with this one
+  const handleChange = (field: string, value: string | number) => {
+    // For ID number field, enforce max length based on ID type
+    if (field === 'idNumber' && typeof value === 'string') {
+      let maxLength = 16; // default for driving license
+
+      // Set max length based on ID type
+      if (formData.idType === 'aadhaar') {
+        maxLength = 12;
+      } else if (formData.idType === 'pan') {
+        maxLength = 10;
+      } else if (formData.idType === 'passport') {
+        maxLength = 8;
+      }
+
+      // Trim to max length if needed
+      value = value.slice(0, maxLength);
+    }
+
     setFormData((prev) => ({ ...prev, [field]: value }));
+
+    // Add validation for idNumber field
+    if (field === 'idNumber' && typeof value === 'string') {
+      if (value.trim()) {
+        const validation = validateIdNumber(formData.idType, value);
+        setIdValidationError(validation.isValid ? '' : validation.message);
+      } else {
+        setIdValidationError('');
+      }
+    }
+
+    // Clear validation error when ID type changes
+    if (field === 'idType') {
+      setIdValidationError('');
+    }
+  };
 
   // Mobile detection helpers
   const isReactNativeWebView = (): boolean => {
@@ -998,7 +1212,7 @@ export default function BookingForm({
     };
   }, [idImages]);
 
-  
+
   // Generate UPI QR Code
   const generateUPIQrCode = async () => {
     setIsGeneratingQR(true);
@@ -1058,6 +1272,65 @@ export default function BookingForm({
   };
 
   // Validate form step
+  // const validateStep = (step: number): boolean => {
+  //   switch (step) {
+  //     case 1:
+  //       if (mode === 'book') {
+  //         if (!formData.customerName.trim()) {
+  //           toast({ title: 'Name required', variant: 'destructive' });
+  //           return false;
+  //         }
+  //         if (!formData.customerPhone.trim() || formData.customerPhone.length < 10) {
+  //           toast({ title: 'Valid phone number required (10 digits)', variant: 'destructive' });
+  //           return false;
+  //         }
+  //         // if (!formData.idNumber.trim()) {
+  //         //   toast({ title: 'ID Number required', variant: 'destructive' });
+  //         //   return false;
+  //         // }
+  //         if (!formData.checkInDate || !formData.checkOutDate) {
+  //           toast({ title: 'Check-in and check-out dates required', variant: 'destructive' });
+  //           return false;
+  //         }
+  //       }
+  //       return true;
+
+  //     case 2:
+  //       if (mode === 'book' && idImages.length === 0) {
+  //         toast({
+  //           title: 'ID Proof Required',
+  //           description: 'Please upload at least one ID proof image',
+  //           variant: "destructive"
+  //         });
+  //         return false;
+  //       }
+  //       return true;
+
+  //     case 3:
+  //       if (mode === 'book' && !paymentMethod) {
+  //         toast({
+  //           title: 'Payment Method Required',
+  //           description: 'Please select payment method',
+  //           variant: "destructive"
+  //         });
+  //         return false;
+  //       }
+  //       if (paymentMethod === 'online' && paymentStatus !== 'completed') {
+  //         toast({
+  //           title: 'Payment Pending',
+  //           description: 'Please complete online payment',
+  //           variant: "destructive"
+  //         });
+  //         return false;
+  //       }
+  //       return true;
+
+  //     default:
+  //       return true;
+  //   }
+  // };
+
+  // Update your validateStep function - replace the case 1 and case 2 sections
   const validateStep = (step: number): boolean => {
     switch (step) {
       case 1:
@@ -1070,10 +1343,17 @@ export default function BookingForm({
             toast({ title: 'Valid phone number required (10 digits)', variant: 'destructive' });
             return false;
           }
-          if (!formData.idNumber.trim()) {
-            toast({ title: 'ID Number required', variant: 'destructive' });
+
+          // 👇 ADD THIS: Check ID number format if provided
+          if (formData.idNumber.trim() && idValidationError) {
+            toast({
+              title: 'Invalid ID Number',
+              description: idValidationError,
+              variant: "destructive"
+            });
             return false;
           }
+
           if (!formData.checkInDate || !formData.checkOutDate) {
             toast({ title: 'Check-in and check-out dates required', variant: 'destructive' });
             return false;
@@ -1082,13 +1362,26 @@ export default function BookingForm({
         return true;
 
       case 2:
-        if (mode === 'book' && idImages.length === 0) {
-          toast({
-            title: 'ID Proof Required',
-            description: 'Please upload at least one ID proof image',
-            variant: "destructive"
-          });
-          return false;
+        if (mode === 'book') {
+          // 👇 ADD THIS: Check if ID number is provided but has invalid format
+          if (formData.idNumber.trim() && idValidationError) {
+            toast({
+              title: 'Invalid ID Number',
+              description: idValidationError,
+              variant: "destructive"
+            });
+            return false;
+          }
+
+          // ID images are optional now - remove or modify this validation
+          if (formData.idNumber.trim() && idImages.length === 0) {
+            toast({
+              title: 'ID Proof Optional',
+              description: 'You can upload ID proof images or continue without them',
+              variant: "default"
+            });
+            // Return true to allow proceeding even without images
+          }
         }
         return true;
 
@@ -1232,121 +1525,96 @@ export default function BookingForm({
     }
   };
 
-  // const handleSubmitForDatabase = async () => {
-  //   setIsSubmitting(true);
-  //   try {
-  //     const response = await fetchBackendRequest('/bookings', {
-  //       room_id: parseInt(roomId),
-  //       customer_name: formData.customerName,
-  //       customer_phone: formData.customerPhone,
-  //       customer_email: formData.customerEmail,
-  //       from_date: formData.checkInDate,
-  //       to_date: formData.checkOutDate,
-  //       from_time: formData.checkInTime,
-  //       to_time: formData.checkOutTime,
-  //       status: mode === 'book' ? 'booked' : mode,
-  //       amount: charges.baseAmount,
-  //       service: includeServiceCharge ? charges.serviceCharge : 0,
-  //       cgst: (taxType === 'cgst_sgst' && includeCGST) ? charges.cgst : 0,
-  //       sgst: (taxType === 'cgst_sgst' && includeSGST) ? charges.sgst : 0,
-  //       igst: (taxType === 'igst' && includeIGST) ? charges.igst : 0,
-  //       gst: (taxType === 'cgst_sgst' ? charges.cgst + charges.sgst : charges.igst),
-  //       total: charges.total,
-  //       payment_method: paymentMethod,
-  //       payment_status: paymentStatus,
-  //       id_type: formData.idType,
-  //       id_number: formData.idNumber,
-  //       guests: formData.guests,
-  //       special_requests: formData.specialRequests,
-  //       referral_by: formData.referralBy,
-  //       referral_amount: formData.referralAmount,
-  //       address: formData.address || '',
-  //       city: formData.city || '',
-  //       state: formData.state || '',
-  //       pincode: formData.pincode || '',
-  //       customer_gst_no: formData.customerGstNo || '',
-  //       purpose_of_visit: formData.purposeOfVisit || '',
-  //       other_expenses: formData.otherExpenses || 0,
-  //       expense_description: formData.expenseDescription || '',
-  //       gst_percentage: taxType === 'cgst_sgst' ?
-  //         (charges.cgstPercentage + charges.sgstPercentage) :
-  //         charges.igstPercentage,
-  //       service_charge_percentage: includeServiceCharge ? charges.serviceChargePercentage : 0
-  //     }, 'POST');
-  //     if (response.success) {
-  //       toast({
-  //         title: "✅ Booking Confirmed",
-  //         description: `Room ${room.number} booked successfully!`,
-  //         variant: "default"
-  //       });
-  //       onSuccess();
-  //     } else {
-  //       throw new Error(response.message || 'Booking failed');
-  //     }
-  //   } catch (error: any) {
-  //     console.error('Booking error:', error);
-  //     toast({
-  //       title: 'Error',
-  //       description: error.message || 'Failed to complete booking',
-  //       variant: 'destructive'
-  //     });
-  //   } finally {
-  //     setIsSubmitting(false);
-  //   }
-  // };
 
   // const handleSubmitForDatabase = async () => {
   //   setIsSubmitting(true);
   //   try {
-  //     // Calculate total with advance - FIXED: Convert to number
+  //     // Calculate total with advance
   //     const totalAmount = charges.total;
   //     const advancePaid = Number(advanceBookingData?.advance_amount) || 0;
   //     const remainingAmount = totalAmount - advancePaid;
 
-  //     const response = await fetchBackendRequest('/bookings', {
-  //       room_id: parseInt(roomId),
-  //       customer_name: formData.customerName,
-  //       customer_phone: formData.customerPhone,
-  //       customer_email: formData.customerEmail,
-  //       from_date: formData.checkInDate,
-  //       to_date: formData.checkOutDate,
-  //       from_time: formData.checkInTime,
-  //       to_time: formData.checkOutTime,
-  //       status: mode === 'book' ? 'booked' : mode,
-  //       amount: charges.baseAmount,
-  //       service: includeServiceCharge ? charges.serviceCharge : 0,
-  //       cgst: (taxType === 'cgst_sgst' && includeCGST) ? charges.cgst : 0,
-  //       sgst: (taxType === 'cgst_sgst' && includeSGST) ? charges.sgst : 0,
-  //       igst: (taxType === 'igst' && includeIGST) ? charges.igst : 0,
-  //       gst: (taxType === 'cgst_sgst' ? charges.cgst + charges.sgst : charges.igst),
-  //       total: totalAmount,
-  //       payment_method: paymentMethod,
-  //       payment_status: advancePaid >= totalAmount ? 'completed' : (advancePaid > 0 ? 'partial' : paymentStatus),
-  //       id_type: formData.idType,
-  //       id_number: formData.idNumber,
-  //       guests: formData.guests,
-  //       special_requests: formData.specialRequests,
-  //       referral_by: formData.referralBy,
-  //       referral_amount: formData.referralAmount,
-  //       address: formData.address || '',
-  //       city: formData.city || '',
-  //       state: formData.state || '',
-  //       pincode: formData.pincode || '',
-  //       customer_gst_no: formData.customerGstNo || '',
-  //       purpose_of_visit: formData.purposeOfVisit || '',
-  //       other_expenses: formData.otherExpenses || 0,
-  //       expense_description: formData.expenseDescription || '',
-  //       gst_percentage: taxType === 'cgst_sgst' ?
-  //         (charges.cgstPercentage + charges.sgstPercentage) :
-  //         charges.igstPercentage,
-  //       service_charge_percentage: includeServiceCharge ? charges.serviceChargePercentage : 0,
-  //       // 👇 FIXED: Use Number() for advance values
+  //     // Determine if this is a conversion
+  //     const isConversion = isAdvanceConversion && advanceBookingData;
+
+  //     // Choose the correct endpoint
+  //     let endpoint = '/bookings';
+  //     let method = 'POST';
+
+  //     if (isConversion) {
+  //       endpoint = `/advance-bookings/${advanceBookingData.id}/convert`;
+  //       method = 'POST';
+  //     }
+
+  //     // Prepare the payload
+  //     const payload = {
+  //       // For conversion, we don't need to send all booking details
+  //       // as the backend will use the advance booking data
+  //       ...(isConversion ? {} : {
+  //         room_id: parseInt(roomId),
+  //         customer_name: formData.customerName,
+  //         customer_phone: formData.customerPhone,
+  //         customer_email: formData.customerEmail,
+  //         from_date: formData.checkInDate,
+  //         to_date: formData.checkOutDate,
+  //         from_time: formData.checkInTime,
+  //         to_time: formData.checkOutTime,
+  //         status: mode === 'book' ? 'booked' : mode,
+  //         amount: charges.baseAmount,
+  //         service: includeServiceCharge ? charges.serviceCharge : 0,
+  //         cgst: (taxType === 'cgst_sgst' && includeCGST) ? charges.cgst : 0,
+  //         sgst: (taxType === 'cgst_sgst' && includeSGST) ? charges.sgst : 0,
+  //         igst: (taxType === 'igst' && includeIGST) ? charges.igst : 0,
+  //         gst: (taxType === 'cgst_sgst' ? charges.cgst + charges.sgst : charges.igst),
+  //         total: totalAmount,
+  //         payment_method: paymentMethod,
+  //         payment_status: advancePaid >= totalAmount ? 'completed' : (advancePaid > 0 ? 'partial' : paymentStatus),
+  //         id_type: formData.idType,
+  //         id_number: formData.idNumber,
+  //         guests: formData.guests,
+  //         special_requests: formData.specialRequests,
+  //         referral_by: formData.referralBy,
+  //         referral_amount: formData.referralAmount,
+  //         address: formData.address || '',
+  //         city: formData.city || '',
+  //         state: formData.state || '',
+  //         pincode: formData.pincode || '',
+  //         customer_gst_no: formData.customerGstNo || '',
+  //         purpose_of_visit: formData.purposeOfVisit || '',
+  //         other_expenses: formData.otherExpenses || 0,
+  //         expense_description: formData.expenseDescription || '',
+  //         gst_percentage: taxType === 'cgst_sgst' ?
+  //           (charges.cgstPercentage + charges.sgstPercentage) :
+  //           charges.igstPercentage,
+  //         service_charge_percentage: includeServiceCharge ? charges.serviceChargePercentage : 0
+  //       }),
+  //       // Always include these fields for tracking
   //       advance_booking_id: advanceBookingData?.id || null,
   //       advance_amount_paid: advancePaid,
   //       remaining_amount: remainingAmount
-  //     }, 'POST');
+  //     };
 
-  //     if (response.success) {
+  //     console.log('Submitting to endpoint:', endpoint);
+  //     console.log('Payload:', payload);
+
+  //     const token = localStorage.getItem('authToken');
+  //     const response = await fetch(`${NODE_BACKEND_URL}${endpoint}`, {
+  //       method: method,
+  //       headers: {
+  //         'Authorization': `Bearer ${token}`,
+  //         'Content-Type': 'application/json',
+  //       },
+  //       body: JSON.stringify(payload),
+  //     });
+
+  //     if (!response.ok) {
+  //       const errorText = await response.text();
+  //       throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+  //     }
+
+  //     const result = await response.json();
+
+  //     if (result.success) {
   //       toast({
   //         title: "✅ Booking Confirmed",
   //         description: advancePaid > 0
@@ -1354,9 +1622,22 @@ export default function BookingForm({
   //           : `Room ${room.number} booked successfully!`,
   //         variant: "default"
   //       });
+
+  //       // Trigger a custom event to refresh advance bookings
+  //       if (isConversion) {
+  //         // Dispatch event to refresh advance bookings
+  //         window.dispatchEvent(new CustomEvent('advance-booking-converted', {
+  //           detail: {
+  //             advanceBookingId: advanceBookingData.id,
+  //             bookingId: result.data?.booking_id
+  //           }
+  //         }));
+  //       }
+
+  //       // Call onSuccess which will close the form and refresh data
   //       onSuccess();
   //     } else {
-  //       throw new Error(response.message || 'Booking failed');
+  //       throw new Error(result.message || 'Booking failed');
   //     }
   //   } catch (error: any) {
   //     console.error('Booking error:', error);
@@ -1370,130 +1651,131 @@ export default function BookingForm({
   //   }
   // };
 
+
+  // In BookingForm.tsx - Replace the handleSubmitForDatabase function
   const handleSubmitForDatabase = async () => {
-  setIsSubmitting(true);
-  try {
-    // Calculate total with advance
-    const totalAmount = charges.total;
-    const advancePaid = Number(advanceBookingData?.advance_amount) || 0;
-    const remainingAmount = totalAmount - advancePaid;
+    setIsSubmitting(true);
+    try {
+      // Calculate total with advance
+      const totalAmount = charges.total;
+      const advancePaid = Number(advanceBookingData?.advance_amount) || 0;
+      const remainingAmount = totalAmount - advancePaid;
 
-    // Determine if this is a conversion
-    const isConversion = isAdvanceConversion && advanceBookingData;
-    
-    // Choose the correct endpoint
-    let endpoint = '/bookings';
-    let method = 'POST';
-    
-    if (isConversion) {
-      endpoint = `/advance-bookings/${advanceBookingData.id}/convert`;
-      method = 'POST';
-    }
+      // Determine if this is a conversion
+      const isConversion = isAdvanceConversion && advanceBookingData;
 
-    // Prepare the payload
-    const payload = {
-      // For conversion, we don't need to send all booking details
-      // as the backend will use the advance booking data
-      ...(isConversion ? {} : {
-        room_id: parseInt(roomId),
-        customer_name: formData.customerName,
-        customer_phone: formData.customerPhone,
-        customer_email: formData.customerEmail,
-        from_date: formData.checkInDate,
-        to_date: formData.checkOutDate,
-        from_time: formData.checkInTime,
-        to_time: formData.checkOutTime,
-        status: mode === 'book' ? 'booked' : mode,
-        amount: charges.baseAmount,
-        service: includeServiceCharge ? charges.serviceCharge : 0,
-        cgst: (taxType === 'cgst_sgst' && includeCGST) ? charges.cgst : 0,
-        sgst: (taxType === 'cgst_sgst' && includeSGST) ? charges.sgst : 0,
-        igst: (taxType === 'igst' && includeIGST) ? charges.igst : 0,
-        gst: (taxType === 'cgst_sgst' ? charges.cgst + charges.sgst : charges.igst),
-        total: totalAmount,
-        payment_method: paymentMethod,
-        payment_status: advancePaid >= totalAmount ? 'completed' : (advancePaid > 0 ? 'partial' : paymentStatus),
-        id_type: formData.idType,
-        id_number: formData.idNumber,
-        guests: formData.guests,
-        special_requests: formData.specialRequests,
-        referral_by: formData.referralBy,
-        referral_amount: formData.referralAmount,
-        address: formData.address || '',
-        city: formData.city || '',
-        state: formData.state || '',
-        pincode: formData.pincode || '',
-        customer_gst_no: formData.customerGstNo || '',
-        purpose_of_visit: formData.purposeOfVisit || '',
-        other_expenses: formData.otherExpenses || 0,
-        expense_description: formData.expenseDescription || '',
-        gst_percentage: taxType === 'cgst_sgst' ?
-          (charges.cgstPercentage + charges.sgstPercentage) :
-          charges.igstPercentage,
-        service_charge_percentage: includeServiceCharge ? charges.serviceChargePercentage : 0
-      }),
-      // Always include these fields for tracking
-      advance_booking_id: advanceBookingData?.id || null,
-      advance_amount_paid: advancePaid,
-      remaining_amount: remainingAmount
-    };
+      // Choose the correct endpoint
+      let endpoint = '/bookings';
+      let method = 'POST';
 
-    console.log('Submitting to endpoint:', endpoint);
-    console.log('Payload:', payload);
-
-    const token = localStorage.getItem('authToken');
-    const response = await fetch(`${NODE_BACKEND_URL}${endpoint}`, {
-      method: method,
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
-    }
-
-    const result = await response.json();
-
-    if (result.success) {
-      toast({
-        title: "✅ Booking Confirmed",
-        description: advancePaid > 0
-          ? `Room ${room.number} booked! Advance paid: ₹${advancePaid.toFixed(2)}, Balance: ₹${remainingAmount.toFixed(2)}`
-          : `Room ${room.number} booked successfully!`,
-        variant: "default"
-      });
-      
-      // Trigger a custom event to refresh advance bookings
       if (isConversion) {
-        // Dispatch event to refresh advance bookings
-        window.dispatchEvent(new CustomEvent('advance-booking-converted', { 
-          detail: { 
-            advanceBookingId: advanceBookingData.id,
-            bookingId: result.data?.booking_id 
-          } 
-        }));
+        endpoint = `/advance-bookings/${advanceBookingData.id}/convert`;
+        method = 'POST';
       }
-      
-      // Call onSuccess which will close the form and refresh data
-      onSuccess();
-    } else {
-      throw new Error(result.message || 'Booking failed');
+
+      // Prepare the payload with advance payment fields
+      const payload = {
+        ...(isConversion ? {} : {
+          room_id: parseInt(roomId),
+          customer_name: formData.customerName,
+          customer_phone: formData.customerPhone,
+          customer_email: formData.customerEmail,
+          from_date: formData.checkInDate,
+          to_date: formData.checkOutDate,
+          from_time: formData.checkInTime,
+          to_time: formData.checkOutTime,
+          status: mode === 'book' ? 'booked' : mode,
+          amount: charges.baseAmount,
+          service: includeServiceCharge ? charges.serviceCharge : 0,
+          cgst: (taxType === 'cgst_sgst' && includeCGST) ? charges.cgst : 0,
+          sgst: (taxType === 'cgst_sgst' && includeSGST) ? charges.sgst : 0,
+          igst: (taxType === 'igst' && includeIGST) ? charges.igst : 0,
+          gst: (taxType === 'cgst_sgst' ? charges.cgst + charges.sgst : charges.igst),
+          total: totalAmount,
+          payment_method: paymentMethod,
+          payment_status: advancePaid >= totalAmount ? 'completed' : (advancePaid > 0 ? 'partial' : paymentStatus),
+          id_type: formData.idType,
+          id_number: formData.idNumber,
+          guests: formData.guests,
+          special_requests: formData.specialRequests,
+          referral_by: formData.referralBy,
+          referral_amount: formData.referralAmount,
+          address: formData.address || '',
+          city: formData.city || '',
+          state: formData.state || '',
+          pincode: formData.pincode || '',
+          customer_gst_no: formData.customerGstNo || '',
+          purpose_of_visit: formData.purposeOfVisit || '',
+          other_expenses: formData.otherExpenses || 0,
+          expense_description: formData.expenseDescription || '',
+          gst_percentage: taxType === 'cgst_sgst' ?
+            (charges.cgstPercentage + charges.sgstPercentage) :
+            charges.igstPercentage,
+          service_charge_percentage: includeServiceCharge ? charges.serviceChargePercentage : 0
+        }),
+        // Always include these fields for advance booking conversion
+        advance_booking_id: advanceBookingData?.id || null,
+        advance_amount_paid: advancePaid,
+        remaining_amount: remainingAmount,
+        conversion_payment_method: paymentMethod, // This is from the user's selection
+      conversion_payment_status: paymentStatus
+      };
+
+      console.log('Submitting to endpoint:', endpoint);
+      console.log('Payload:', payload);
+
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`${NODE_BACKEND_URL}${endpoint}`, {
+        method: method,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        toast({
+          title: "✅ Booking Confirmed",
+          description: advancePaid > 0
+            ? `Room ${room.number} booked! Advance paid: ₹${advancePaid.toFixed(2)}, Balance: ₹${remainingAmount.toFixed(2)}`
+            : `Room ${room.number} booked successfully!`,
+          variant: "default"
+        });
+
+        // Trigger a custom event to refresh advance bookings
+        if (isConversion) {
+          window.dispatchEvent(new CustomEvent('advance-booking-converted', {
+            detail: {
+              advanceBookingId: advanceBookingData.id,
+              bookingId: result.data?.booking_id
+            }
+          }));
+        }
+
+        onSuccess();
+      } else {
+        throw new Error(result.message || 'Booking failed');
+      }
+    } catch (error: any) {
+      console.error('Booking error:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to complete booking',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsSubmitting(false);
     }
-  } catch (error: any) {
-    console.error('Booking error:', error);
-    toast({
-      title: 'Error',
-      description: error.message || 'Failed to complete booking',
-      variant: 'destructive'
-    });
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+  };
+
 
   const handleSubmit = async () => {
     if (!validateStep(activeStep)) return;
@@ -1543,6 +1825,215 @@ export default function BookingForm({
 
   const title = mode === 'book' ? 'Book Room' : mode === 'block' ? 'Block Room Dates' : 'Set Under Maintenance';
 
+
+  // Add this helper function for ID validation
+  const validateIdNumber = (idType: string, idNumber: string): { isValid: boolean; message: string } => {
+    // If empty, it's valid (optional field)
+    if (!idNumber.trim()) {
+      return { isValid: true, message: '' };
+    }
+
+    // Remove spaces and convert to uppercase for validation
+    const cleanId = idNumber.replace(/\s/g, '').toUpperCase();
+
+    switch (idType) {
+      case 'aadhaar':
+        // Aadhaar: 12 digits
+        const aadhaarRegex = /^\d{12}$/;
+        if (!aadhaarRegex.test(cleanId)) {
+          return {
+            isValid: false,
+            message: 'Aadhaar number must be exactly 12 digits'
+          };
+        }
+        break;
+
+      case 'pan':
+        // PAN: 5 letters + 4 digits + 1 letter (e.g., ABCDE1234F)
+        const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
+        if (!panRegex.test(cleanId)) {
+          return {
+            isValid: false,
+            message: 'PAN must be in format: ABCDE1234F (5 letters + 4 digits + 1 letter)'
+          };
+        }
+        break;
+
+      case 'passport':
+        // Passport: 1 letter + 7 digits (Indian passport format)
+        const passportRegex = /^[A-Z]{1}[0-9]{7}$/;
+        if (!passportRegex.test(cleanId)) {
+          return {
+            isValid: false,
+            message: 'Passport number must be 1 letter followed by 7 digits'
+          };
+        }
+        break;
+
+      case 'driving':
+        // Driving License: Format varies by state, but typically alphanumeric
+        const drivingRegex = /^[A-Z0-9]{8,16}$/;
+        if (!drivingRegex.test(cleanId)) {
+          return {
+            isValid: false,
+            message: 'Driving license must be 8-16 alphanumeric characters'
+          };
+        }
+        break;
+
+      default:
+        return { isValid: true, message: '' };
+    }
+
+    return { isValid: true, message: '' };
+  };
+
+
+  // Add this component near your BookingForm or in a separate file
+  const CustomTimePicker = ({
+    value,
+    onChange,
+    label,
+    defaultTime
+  }: {
+    value: string;
+    onChange: (time: string) => void;
+    label: string;
+    defaultTime: string;
+  }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [selectedHour, setSelectedHour] = useState(() => {
+      if (value) {
+        const [h] = value.split(':');
+        return h;
+      }
+      return defaultTime.split(':')[0];
+    });
+    const [selectedMinute, setSelectedMinute] = useState(() => {
+      if (value) {
+        const [, m] = value.split(':');
+        return m;
+      }
+      return defaultTime.split(':')[1];
+    });
+
+    // Generate hours (00-23)
+    const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
+
+    // Generate minutes (00-59)
+    const minutes = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'));
+
+    const handleHourChange = (hour: string) => {
+      setSelectedHour(hour);
+      // Don't close on hour selection
+    };
+
+    const handleMinuteChange = (minute: string) => {
+      setSelectedMinute(minute);
+      // Auto-close when minute is selected
+      const newTime = `${selectedHour}:${minute}`;
+      onChange(newTime);
+      setIsOpen(false);
+    };
+
+    return (
+      <div className="relative">
+        <Label htmlFor={`time-${label}`} className="flex items-center gap-2">
+          <Clock className="h-4 w-4" />
+          {label}
+        </Label>
+        <div className="relative">
+          <Input
+            id={`time-${label}`}
+            value={value || defaultTime}
+            onClick={() => setIsOpen(!isOpen)}
+            readOnly
+            className="cursor-pointer"
+            placeholder={defaultTime}
+          />
+          {isOpen && (
+            <div className="absolute z-50 mt-1 w-full bg-white border rounded-lg shadow-lg p-2">
+              <div className="flex gap-2">
+                {/* Hours Column */}
+                <div className="flex-1">
+                  <div className="text-xs font-medium text-center mb-1 text-muted-foreground">
+                    Hour
+                  </div>
+                  <div className="h-48 overflow-y-auto">
+                    {hours.map((hour) => (
+                      <button
+                        key={hour}
+                        className={`w-full px-2 py-1 text-sm text-center hover:bg-primary hover:text-primary-foreground rounded ${selectedHour === hour ? 'bg-primary text-primary-foreground' : ''
+                          }`}
+                        onClick={() => handleHourChange(hour)}
+                      >
+                        {hour}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Minutes Column */}
+                <div className="flex-1">
+                  <div className="text-xs font-medium text-center mb-1 text-muted-foreground">
+                    Minute
+                  </div>
+                  <div className="h-48 overflow-y-auto">
+                    {minutes.map((minute) => (
+                      <button
+                        key={minute}
+                        className={`w-full px-2 py-1 text-sm text-center hover:bg-primary hover:text-primary-foreground rounded ${selectedMinute === minute ? 'bg-primary text-primary-foreground' : ''
+                          }`}
+                        onClick={() => handleMinuteChange(minute)}
+                      >
+                        {minute}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick select buttons */}
+              <div className="border-t mt-2 pt-2">
+                <div className="text-xs font-medium mb-1 text-muted-foreground">
+                  Quick Select
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    className="flex-1 text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded"
+                    onClick={() => handleMinuteChange('00')}
+                  >
+                    :00
+                  </button>
+                  <button
+                    className="flex-1 text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded"
+                    onClick={() => handleMinuteChange('15')}
+                  >
+                    :15
+                  </button>
+                  <button
+                    className="flex-1 text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded"
+                    onClick={() => handleMinuteChange('30')}
+                  >
+                    :30
+                  </button>
+                  <button
+                    className="flex-1 text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded"
+                    onClick={() => handleMinuteChange('45')}
+                  >
+                    :45
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground">Default: {defaultTime}</p>
+      </div>
+    );
+  };
+
+
   return (
     <Dialog open={true} onOpenChange={onClose} aria-describedby="booking-form-description">
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -1556,7 +2047,20 @@ export default function BookingForm({
               (Step {activeStep}/3)
             </span>
           </DialogTitle>
+
+          <div className="flex justify-end mt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleAdvanceBookingRedirect}
+              className="flex items-center gap-2 text-blue-600 border-blue-200 hover:bg-blue-50"
+            >
+              <CalendarDays className="h-4 w-4" />
+              Create Advance Booking Instead
+            </Button>
+          </div>
         </DialogHeader>
+        {/* </DialogHeader> */}
 
         {/* Progress Steps */}
         <div className="flex items-center justify-between mb-6 px-4">
@@ -1684,16 +2188,26 @@ export default function BookingForm({
             </div>
 
             <div className="grid grid-cols-2 gap-4">
+              {/* Find this section and update the onValueChange */}
               <div className="space-y-2">
                 <Label htmlFor="idType" className="flex items-center gap-2">
-                  ID Type <span className="text-xs text-muted-foreground">(Optional)</span>
+                  ID Type
+                  <span className="text-xs text-muted-foreground">(Optional)</span>
                 </Label>
                 <Select
                   value={formData.idType}
-                  onValueChange={(value: any) => handleChange('idType', value)}
+                  onValueChange={(value: any) => {
+                    handleChange('idType', value);
+                    // 👇 ADD THIS: Clear validation error and revalidate if there's a value
+                    setIdValidationError('');
+                    if (formData.idNumber.trim()) {
+                      const validation = validateIdNumber(value, formData.idNumber);
+                      setIdValidationError(validation.isValid ? '' : validation.message);
+                    }
+                  }}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select ID type" />
+                    <SelectValue placeholder="Select ID type (optional)" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="aadhaar">Aadhaar Card</SelectItem>
@@ -1703,20 +2217,61 @@ export default function BookingForm({
                   </SelectContent>
                 </Select>
               </div>
+              {/* Find this section and replace with the updated version */}
               <div className="space-y-2">
                 <Label htmlFor="idNumber" className="flex items-center gap-2">
-                  ID Number <span className="text-xs text-muted-foreground">(Optional)</span>
+                  ID Number
+                  <span className="text-xs text-muted-foreground">(Optional)</span>
                 </Label>
-                <Input
-                  id="idNumber"
-                  value={formData.idNumber}
-                  onChange={e => handleChange('idNumber', e.target.value)}
-                  placeholder={formData.idType === 'pan' ? 'ABCDE1234F' : '1234 5678 9012'}
-                />
+                <div className="relative">
+                  <Input
+                    id="idNumber"
+                    value={formData.idNumber}
+                    onChange={e => handleChange('idNumber', e.target.value)}
+                    placeholder={
+                      formData.idType === 'pan' ? 'ABCDE1234F' :
+                        formData.idType === 'aadhaar' ? '123456789012' :
+                          formData.idType === 'passport' ? 'A1234567' :
+                            'Enter ID number'
+                    }
+                    maxLength={
+                      formData.idType === 'aadhaar' ? 12 :
+                        formData.idType === 'pan' ? 10 :
+                          formData.idType === 'passport' ? 8 :
+                            16 // for driving license
+                    }
+                    className={idValidationError ? 'border-red-500 pr-10' : ''}
+                  />
+                  {idValidationError && (
+                    <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                      <AlertCircle className="h-5 w-5 text-red-500" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Show validation message */}
+                {idValidationError ? (
+                  <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {idValidationError}
+                  </p>
+                ) : formData.idNumber.trim() ? (
+                  <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                    <CheckCircle className="h-3 w-3" />
+                    Valid format
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {formData.idType === 'pan' && 'Format: ABCDE1234F (5 letters + 4 digits + 1 letter)'}
+                    {formData.idType === 'aadhaar' && 'Format: 12 digits (e.g., 123456789012)'}
+                    {formData.idType === 'passport' && 'Format: 1 letter + 7 digits (e.g., A1234567)'}
+                    {formData.idType === 'driving' && 'Format: 8-16 alphanumeric characters'}
+                  </p>
+                )}
               </div>
             </div>
 
-          
+
 
             {userSource === 'database' && (
               <Collapsible
@@ -1876,19 +2431,12 @@ export default function BookingForm({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="checkInTime" className="flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
-                  Check-in Time <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  type="time"
-                  id="checkInTime"
+                <CustomTimePicker
                   value={formData.checkInTime}
-                  onChange={e => handleChange('checkInTime', e.target.value)}
-                  required
-                  className="w-full"
+                  onChange={(time) => handleChange('checkInTime', time)}
+                  label="Check-in Time *"
+                  defaultTime="14:00"
                 />
-                <p className="text-xs text-muted-foreground">Default: 14:00 (2:00 PM)</p>
               </div>
 
               <div className="space-y-2">
@@ -1907,19 +2455,12 @@ export default function BookingForm({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="checkOutTime" className="flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
-                  Check-out Time <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  type="time"
-                  id="checkOutTime"
+                <CustomTimePicker
                   value={formData.checkOutTime}
-                  onChange={e => handleChange('checkOutTime', e.target.value)}
-                  required
-                  className="w-full"
+                  onChange={(time) => handleChange('checkOutTime', time)}
+                  label="Check-out Time *"
+                  defaultTime="12:00"
                 />
-                <p className="text-xs text-muted-foreground">Default: 12:00 (12:00 PM)</p>
               </div>
             </div>
 
@@ -1961,7 +2502,7 @@ export default function BookingForm({
               />
             </div>
 
-       
+
 
             {/* ========== PRICE CONFIGURATION SECTION ========== */}
             <Collapsible
@@ -2696,7 +3237,7 @@ export default function BookingForm({
           <div className="space-y-6">
 
             {/* 👇 ADVANCE BOOKING INFO BOX */}
-            {isAdvanceConversion && advanceBookingData && (
+            {/* {isAdvanceConversion && advanceBookingData && (
               <div className="border rounded-lg p-4 bg-purple-50 border-purple-200">
                 <h4 className="font-semibold text-purple-800 flex items-center gap-2 mb-3">
                   <CheckCircle className="h-4 w-4" />
@@ -2718,6 +3259,43 @@ export default function BookingForm({
                   <div>
                     <span className="text-purple-600">Balance Due:</span>
                     <span className="font-bold text-orange-600 ml-2">₹{(charges.total - Number(advanceBookingData.advance_amount)).toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+            )} */}
+
+            {isAdvanceConversion && advanceBookingData && (
+              <div className="border rounded-lg p-4 bg-purple-50 border-purple-200">
+                <h4 className="font-semibold text-purple-800 flex items-center gap-2 mb-3">
+                  <CheckCircle className="h-4 w-4" />
+                  Advance Payment Details
+                </h4>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <span className="text-purple-600">Advance Booking #:</span>
+                    <span className="font-medium ml-2">{advanceBookingData.invoice_number}</span>
+                  </div>
+                  <div>
+                    <span className="text-purple-600">Full Booking Amount:</span>
+                    <span className="font-bold ml-2">₹{charges.total.toFixed(2)}</span>
+                  </div>
+                  <div>
+                    <span className="text-purple-600">Advance Already Paid:</span>
+                    <span className="font-bold text-green-600 ml-2">
+                      - ₹{Number(advanceBookingData.advance_amount).toFixed(2)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-purple-600">Payment Method:</span>
+                    <span className="font-medium ml-2 capitalize">{advanceBookingData.payment_method}</span>
+                  </div>
+                  <div className="col-span-2 border-t border-purple-200 pt-2 mt-1">
+                    <div className="flex justify-between">
+                      <span className="font-medium text-purple-800">Balance Due at Check-in:</span>
+                      <span className="font-bold text-orange-600 text-lg">
+                        ₹{(charges.total - Number(advanceBookingData.advance_amount)).toFixed(2)}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2927,7 +3505,7 @@ export default function BookingForm({
                         </div>
                       </div>
 
-                      <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+                      {/* <div className="mt-6 p-4 bg-gray-50 rounded-lg">
                         <h5 className="font-medium text-sm mb-2">Alternative Payment Method</h5>
                         <p className="text-xs text-gray-600">
                           If QR code doesn't work, you can also pay directly to:
@@ -2948,7 +3526,7 @@ export default function BookingForm({
                             </div>
                           </div>
                         </div>
-                      </div>
+                      </div> */}
 
                       <div className="space-y-4 mt-6">
                         <div className="flex items-center justify-between">

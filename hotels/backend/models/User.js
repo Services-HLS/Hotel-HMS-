@@ -317,6 +317,65 @@ static async findByUsername(username) {
 //   }
 // }
 
+// static async saveEmailOTP(email, otp, expiry) {
+//   console.log("💾 [SAVE OTP] ========== STARTING ==========");
+//   console.log("💾 [SAVE OTP] Email:", email);
+//   console.log("💾 [SAVE OTP] OTP:", otp);
+  
+//   try {
+//     const expiryDate = new Date(expiry);
+    
+//     console.log("💾 [SAVE OTP] Original expiry (local):", expiryDate.toString());
+//     console.log("💾 [SAVE OTP] Original expiry (IST hours):", expiryDate.getHours());
+    
+//     // ✅ FIXED: DON'T convert to UTC! Store the IST time directly
+//     // MySQL will store it as is, and NOW() will return IST
+    
+//     // Format as YYYY-MM-DD HH:MM:SS in LOCAL time (IST)
+//     const year = expiryDate.getFullYear();
+//     const month = String(expiryDate.getMonth() + 1).padStart(2, '0');
+//     const day = String(expiryDate.getDate()).padStart(2, '0');
+//     const hours = String(expiryDate.getHours()).padStart(2, '0');
+//     const minutes = String(expiryDate.getMinutes()).padStart(2, '0');
+//     const seconds = String(expiryDate.getSeconds()).padStart(2, '0');
+    
+//     const mysqlDateTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    
+//     console.log("💾 [SAVE OTP] MySQL formatted expiry (IST):", mysqlDateTime);
+//     console.log("💾 [SAVE OTP] This should match the original hours:", hours);
+    
+//     // Delete any existing OTP
+//     await pool.execute(`DELETE FROM email_otps WHERE email = ?`, [email]);
+    
+//     // Insert new OTP
+//     const [result] = await pool.execute(
+//       `INSERT INTO email_otps (email, otp, expiry_time) 
+//        VALUES (?, ?, ?)`,
+//       [email, otp, mysqlDateTime]
+//     );
+    
+//     console.log("💾 [SAVE OTP] ✅ Saved successfully, ID:", result.insertId);
+    
+//     // Verify it was saved correctly
+//     const [verifyRows] = await pool.execute(
+//       `SELECT * FROM email_otps WHERE email = ?`,
+//       [email]
+//     );
+    
+//     console.log("💾 [SAVE OTP] Verified saved expiry:", verifyRows[0]?.expiry_time);
+    
+//     return result.affectedRows > 0;
+    
+//   } catch (error) {
+//     console.error("❌ [SAVE OTP] Error:", error);
+//     return false;
+//   }
+// }
+
+
+
+// In User.js - Replace both saveEmailOTP and verifyEmailOTP with these:
+
 static async saveEmailOTP(email, otp, expiry) {
   console.log("💾 [SAVE OTP] ========== STARTING ==========");
   console.log("💾 [SAVE OTP] Email:", email);
@@ -325,24 +384,11 @@ static async saveEmailOTP(email, otp, expiry) {
   try {
     const expiryDate = new Date(expiry);
     
-    console.log("💾 [SAVE OTP] Original expiry (local):", expiryDate.toString());
-    console.log("💾 [SAVE OTP] Original expiry (IST hours):", expiryDate.getHours());
+    // Format for MySQL: YYYY-MM-DD HH:MM:SS
+    const mysqlDateTime = expiryDate.toISOString().slice(0, 19).replace('T', ' ');
     
-    // ✅ FIXED: DON'T convert to UTC! Store the IST time directly
-    // MySQL will store it as is, and NOW() will return IST
-    
-    // Format as YYYY-MM-DD HH:MM:SS in LOCAL time (IST)
-    const year = expiryDate.getFullYear();
-    const month = String(expiryDate.getMonth() + 1).padStart(2, '0');
-    const day = String(expiryDate.getDate()).padStart(2, '0');
-    const hours = String(expiryDate.getHours()).padStart(2, '0');
-    const minutes = String(expiryDate.getMinutes()).padStart(2, '0');
-    const seconds = String(expiryDate.getSeconds()).padStart(2, '0');
-    
-    const mysqlDateTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-    
-    console.log("💾 [SAVE OTP] MySQL formatted expiry (IST):", mysqlDateTime);
-    console.log("💾 [SAVE OTP] This should match the original hours:", hours);
+    console.log("💾 [SAVE OTP] Original expiry:", expiryDate.toString());
+    console.log("💾 [SAVE OTP] MySQL formatted expiry:", mysqlDateTime);
     
     // Delete any existing OTP
     await pool.execute(`DELETE FROM email_otps WHERE email = ?`, [email]);
@@ -356,18 +402,55 @@ static async saveEmailOTP(email, otp, expiry) {
     
     console.log("💾 [SAVE OTP] ✅ Saved successfully, ID:", result.insertId);
     
-    // Verify it was saved correctly
-    const [verifyRows] = await pool.execute(
-      `SELECT * FROM email_otps WHERE email = ?`,
-      [email]
-    );
-    
-    console.log("💾 [SAVE OTP] Verified saved expiry:", verifyRows[0]?.expiry_time);
+    // Calculate hours remaining
+    const now = new Date();
+    const hoursLeft = Math.floor((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60));
+    console.log(`💾 [SAVE OTP] ⏰ OTP valid for ${hoursLeft} hours`);
     
     return result.affectedRows > 0;
     
   } catch (error) {
     console.error("❌ [SAVE OTP] Error:", error);
+    return false;
+  }
+}
+
+static async verifyEmailOTP(email, otp) {
+  console.log("🔐 [VERIFY OTP] ========== STARTING ==========");
+  console.log("🔐 [VERIFY OTP] Email:", email);
+  console.log("🔐 [VERIFY OTP] OTP provided:", otp);
+  
+  try {
+    // ✅ SIMPLE: Let MySQL handle the comparison
+    const [rows] = await pool.execute(
+      `SELECT * FROM email_otps 
+       WHERE email = ? AND otp = ? 
+       AND expiry_time > NOW()`,
+      [email, otp]
+    );
+    
+    if (rows.length > 0) {
+      console.log("✅ OTP is valid!");
+      
+      // Calculate hours remaining
+      const expiryDate = new Date(rows[0].expiry_time);
+      const now = new Date();
+      const hoursLeft = Math.floor((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60));
+      const minutesLeft = Math.floor(((expiryDate.getTime() - now.getTime()) % (1000 * 60 * 60)) / (1000 * 60));
+      
+      console.log(`⏰ OTP expires in ${hoursLeft} hours and ${minutesLeft} minutes`);
+      
+      return true;
+    } else {
+      console.log("❌ OTP invalid or expired");
+      
+      // Clean up expired OTPs
+      await pool.execute(`DELETE FROM email_otps WHERE email = ?`, [email]);
+      return false;
+    }
+    
+  } catch (error) {
+    console.error("❌ [VERIFY OTP] Error:", error);
     return false;
   }
 }
@@ -597,101 +680,101 @@ static async saveEmailOTP(email, otp, expiry) {
 //   }
 // }
 
-static async verifyEmailOTP(email, otp) {
-  console.log("🔐 [VERIFY OTP] ========== STARTING ==========");
-  console.log("🔐 [VERIFY OTP] Email:", email);
-  console.log("🔐 [VERIFY OTP] OTP provided:", otp);
+// static async verifyEmailOTP(email, otp) {
+//   console.log("🔐 [VERIFY OTP] ========== STARTING ==========");
+//   console.log("🔐 [VERIFY OTP] Email:", email);
+//   console.log("🔐 [VERIFY OTP] OTP provided:", otp);
   
-  try {
-    // Get current time from MySQL (this returns IST)
-    const [timeRows] = await pool.execute('SELECT NOW() as now');
-    const currentIst = new Date(timeRows[0].now);
+//   try {
+//     // Get current time from MySQL (this returns IST)
+//     const [timeRows] = await pool.execute('SELECT NOW() as now');
+//     const currentIst = new Date(timeRows[0].now);
     
-    console.log("🔐 [VERIFY OTP] Current IST time from MySQL:", currentIst.toString());
-    console.log("🔐 [VERIFY OTP] Current IST hours:", currentIst.getHours());
+//     console.log("🔐 [VERIFY OTP] Current IST time from MySQL:", currentIst.toString());
+//     console.log("🔐 [VERIFY OTP] Current IST hours:", currentIst.getHours());
     
-    // Get all OTPs for this email
-    const [allOtps] = await pool.execute(
-      `SELECT * FROM email_otps WHERE email = ? ORDER BY created_at DESC`,
-      [email]
-    );
+//     // Get all OTPs for this email
+//     const [allOtps] = await pool.execute(
+//       `SELECT * FROM email_otps WHERE email = ? ORDER BY created_at DESC`,
+//       [email]
+//     );
     
-    console.log("🔐 [VERIFY OTP] All OTPs found:", allOtps.length);
+//     console.log("🔐 [VERIFY OTP] All OTPs found:", allOtps.length);
     
-    if (allOtps.length === 0) {
-      console.log("❌ No OTPs found for this email");
-      return false;
-    }
+//     if (allOtps.length === 0) {
+//       console.log("❌ No OTPs found for this email");
+//       return false;
+//     }
     
-    // Find matching OTP
-    const matchingOtp = allOtps.find(record => record.otp === otp);
+//     // Find matching OTP
+//     const matchingOtp = allOtps.find(record => record.otp === otp);
     
-    if (!matchingOtp) {
-      console.log("❌ No matching OTP found");
-      return false;
-    }
+//     if (!matchingOtp) {
+//       console.log("❌ No matching OTP found");
+//       return false;
+//     }
     
-    console.log("🔐 [VERIFY OTP] Matching OTP record:", {
-      id: matchingOtp.id,
-      expiry_time: matchingOtp.expiry_time
-    });
+//     console.log("🔐 [VERIFY OTP] Matching OTP record:", {
+//       id: matchingOtp.id,
+//       expiry_time: matchingOtp.expiry_time
+//     });
     
-    // Convert expiry_time to Date (this will be in IST)
-    const expiryDate = new Date(matchingOtp.expiry_time);
+//     // Convert expiry_time to Date (this will be in IST)
+//     const expiryDate = new Date(matchingOtp.expiry_time);
     
-    console.log("🔐 [VERIFY OTP] Expiry time:", expiryDate.toString());
-    console.log("🔐 [VERIFY OTP] Expiry hours:", expiryDate.getHours());
-    console.log("🔐 [VERIFY OTP] Current time:", currentIst.toString());
-    console.log("🔐 [VERIFY OTP] Current hours:", currentIst.getHours());
+//     console.log("🔐 [VERIFY OTP] Expiry time:", expiryDate.toString());
+//     console.log("🔐 [VERIFY OTP] Expiry hours:", expiryDate.getHours());
+//     console.log("🔐 [VERIFY OTP] Current time:", currentIst.toString());
+//     console.log("🔐 [VERIFY OTP] Current hours:", currentIst.getHours());
     
-    // Compare timestamps (both are now in IST)
-    const timeDiffMs = expiryDate.getTime() - currentIst.getTime();
-    const minutesLeft = Math.floor(timeDiffMs / (1000 * 60));
+//     // Compare timestamps (both are now in IST)
+//     const timeDiffMs = expiryDate.getTime() - currentIst.getTime();
+//     const minutesLeft = Math.floor(timeDiffMs / (1000 * 60));
     
-    console.log("🔐 [VERIFY OTP] Minutes left:", minutesLeft);
+//     console.log("🔐 [VERIFY OTP] Minutes left:", minutesLeft);
     
-    if (timeDiffMs > 0) {
-      console.log("✅ OTP is valid!");
-      return true;
-    } else {
-      console.log(`❌ OTP expired ${Math.abs(minutesLeft)} minutes ago`);
+//     if (timeDiffMs > 0) {
+//       console.log("✅ OTP is valid!");
+//       return true;
+//     } else {
+//       console.log(`❌ OTP expired ${Math.abs(minutesLeft)} minutes ago`);
       
-      // Clean up expired OTP
-      await pool.execute(`DELETE FROM email_otps WHERE email = ?`, [email]);
-      console.log("🧹 Expired OTP deleted");
+//       // Clean up expired OTP
+//       await pool.execute(`DELETE FROM email_otps WHERE email = ?`, [email]);
+//       console.log("🧹 Expired OTP deleted");
       
-      return false;
-    }
+//       return false;
+//     }
     
-  } catch (error) {
-    console.error("❌ [VERIFY OTP] Error:", error);
+//   } catch (error) {
+//     console.error("❌ [VERIFY OTP] Error:", error);
     
-    // FALLBACK: Simple SQL comparison
-    try {
-      console.log("🔐 [VERIFY OTP] Using fallback method...");
+//     // FALLBACK: Simple SQL comparison
+//     try {
+//       console.log("🔐 [VERIFY OTP] Using fallback method...");
       
-      const [rows] = await pool.execute(
-        `SELECT * FROM email_otps 
-         WHERE email = ? AND otp = ? 
-         AND expiry_time > NOW()`,
-        [email, otp]
-      );
+//       const [rows] = await pool.execute(
+//         `SELECT * FROM email_otps 
+//          WHERE email = ? AND otp = ? 
+//          AND expiry_time > NOW()`,
+//         [email, otp]
+//       );
       
-      const isValid = rows.length > 0;
-      console.log("🔐 [VERIFY OTP] Fallback result:", isValid);
+//       const isValid = rows.length > 0;
+//       console.log("🔐 [VERIFY OTP] Fallback result:", isValid);
       
-      if (!isValid) {
-        await pool.execute(`DELETE FROM email_otps WHERE email = ?`, [email]);
-      }
+//       if (!isValid) {
+//         await pool.execute(`DELETE FROM email_otps WHERE email = ?`, [email]);
+//       }
       
-      return isValid;
+//       return isValid;
       
-    } catch (fallbackError) {
-      console.error("❌ [VERIFY OTP] Fallback also failed:", fallbackError);
-      return false;
-    }
-  }
-}
+//     } catch (fallbackError) {
+//       console.error("❌ [VERIFY OTP] Fallback also failed:", fallbackError);
+//       return false;
+//     }
+//   }
+// }
 //  static async saveEmailOTP(email, otp, expiry) {
 //   console.log("💾 [SAVE OTP] Saving for email:", email);
 //   console.log("💾 [SAVE OTP] OTP:", otp);

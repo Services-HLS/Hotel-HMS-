@@ -62,118 +62,364 @@ export const getAvailableRooms = async (params?: { from_date?: string; to_date?:
   }
 };
 
-export const getAvailableRoomsCorrectly = async (params?: { from_date?: string; to_date?: string }): Promise<any[]> => {
-  try {
-    // Get auth token for headers
-    const token = localStorage.getItem('authToken');
-    const headers = {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    };
+// export const getAvailableRoomsCorrectly = async (params?: { from_date?: string; to_date?: string }): Promise<any[]> => {
+//   try {
+//     // Get auth token for headers
+//     const token = localStorage.getItem('authToken');
+//     const headers = {
+//       'Authorization': `Bearer ${token}`,
+//       'Content-Type': 'application/json',
+//     };
     
-    // 1. First, get all rooms for the hotel
+//     // 1. First, get all rooms for the hotel
+//     const roomsResponse = await fetch(`${API_BASE_URL}/rooms`, {
+//       method: 'GET',
+//       headers: headers,
+//     });
+    
+//     if (!roomsResponse.ok) {
+//       console.error('❌ Failed to fetch rooms:', roomsResponse.status);
+//       return [];
+//     }
+    
+//     const roomsResult = await roomsResponse.json();
+//     const allRooms = roomsResult.data || [];
+    
+//     // If no dates provided, return all rooms (or filter by non-permanent status)
+//     if (!params?.from_date || !params?.to_date) {
+//       // Return rooms that are not permanently blocked/maintenance
+//       const availableByStatus = allRooms.filter(room => 
+//         room.status !== 'maintenance' && room.status !== 'blocked'
+//       );
+//       return availableByStatus;
+//     }
+    
+//     // 2. Get all bookings for the hotel to check availability
+//     const bookingsResponse = await fetch(`${API_BASE_URL}/bookings`, {
+//       method: 'GET',
+//       headers: headers,
+//     });
+    
+//     if (!bookingsResponse.ok) {
+//       console.error('❌ Failed to fetch bookings:', bookingsResponse.status);
+//       return [];
+//     }
+    
+//     const bookingsResult = await bookingsResponse.json();
+//     const allBookings = bookingsResult.data || [];
+    
+//     // Parse the check dates
+//     const checkFrom = new Date(params.from_date).getTime();
+//     const checkTo = new Date(params.to_date).getTime();
+    
+//     // 3. Find all bookings that conflict with the requested dates
+//     const conflictingRoomIds = new Set<number>();
+    
+//     for (const booking of allBookings) {
+//       // Consider ALL statuses that make a room unavailable
+//       const skipStatuses = ['available', 'completed', 'cancelled', 'checked_out', 'checked-out'];
+//       if (skipStatuses.includes(booking.status?.toLowerCase())) {
+//         continue;
+//       }
+      
+//       // Also check special_requests for maintenance keywords
+//       const isMaintenance = booking.special_requests?.toLowerCase().includes('maintenance') || 
+//                            booking.special_requests?.toLowerCase().includes('repair') ||
+//                            booking.special_requests?.toLowerCase().includes('fix');
+      
+//       // Skip if status is empty AND it's not maintenance
+//       if (!booking.status && !isMaintenance) {
+//         continue;
+//       }
+      
+//       // Skip if missing dates
+//       if (!booking.from_date || !booking.to_date) {
+//         continue;
+//       }
+      
+//       try {
+//         const bookingFrom = new Date(booking.from_date).getTime();
+//         const bookingTo = new Date(booking.to_date).getTime();
+        
+//         // Check if dates overlap
+//         const hasOverlap = bookingTo > checkFrom && bookingFrom < checkTo;
+        
+//         if (hasOverlap) {
+//           conflictingRoomIds.add(booking.room_id);
+//         }
+//       } catch (dateError) {
+//         console.error('Error parsing dates for booking:', booking.id);
+//       }
+//     }
+    
+//     // 4. Filter rooms that are NOT in the conflicting list
+//     const availableRooms = allRooms.filter(room => {
+//       // Skip if room is permanently blocked/maintenance in its own status
+//       if (room.status === 'maintenance' || room.status === 'blocked') {
+//         return false;
+//       }
+      
+//       // Skip if room has conflicting booking/maintenance
+//       return !conflictingRoomIds.has(room.id);
+//     });
+    
+//     return availableRooms;
+    
+//   } catch (error) {
+//     console.error('❌ Error in getAvailableRoomsCorrectly:', error);
+//     return [];
+//   }
+// };
+
+// ===========================================
+// BOOKING OPERATIONS
+// ===========================================
+
+
+
+// export const getAvailableRoomsCorrectly = async (params?: { from_date?: string; to_date?: string }): Promise<any[]> => {
+//   try {
+//     // Get auth token for headers
+//     const token = localStorage.getItem('authToken');
+//     const headers = {
+//       'Authorization': `Bearer ${token}`,
+//       'Content-Type': 'application/json',
+//     };
+    
+//     // 1. First, get all rooms for the hotel
+//     const roomsResponse = await fetch(`${API_BASE_URL}/rooms`, {
+//       method: 'GET',
+//       headers: headers,
+//     });
+    
+//     if (!roomsResponse.ok) {
+//       console.error('❌ Failed to fetch rooms:', roomsResponse.status);
+//       return [];
+//     }
+    
+//     const roomsResult = await roomsResponse.json();
+//     const allRooms = roomsResult.data || [];
+    
+//     // If no dates provided, return all rooms (or filter by non-permanent status)
+//     if (!params?.from_date || !params?.to_date) {
+//       // Return rooms that are not permanently blocked/maintenance
+//       const availableByStatus = allRooms.filter(room => 
+//         room.status !== 'maintenance' && room.status !== 'blocked'
+//       );
+//       return availableByStatus;
+//     }
+    
+//     // 2. Get all bookings for the hotel to check availability
+//     const bookingsResponse = await fetch(`${API_BASE_URL}/bookings`, {
+//       method: 'GET',
+//       headers: headers,
+//     });
+    
+//     if (!bookingsResponse.ok) {
+//       console.error('❌ Failed to fetch bookings:', bookingsResponse.status);
+//       return [];
+//     }
+    
+//     const bookingsResult = await bookingsResponse.json();
+//     const allBookings = bookingsResult.data || [];
+    
+//     // Parse the check dates - set to start and end of day for proper comparison
+//     const checkFromDate = new Date(params.from_date);
+//     checkFromDate.setHours(0, 0, 0, 0); // Start of day
+    
+//     const checkToDate = new Date(params.to_date);
+//     checkToDate.setHours(23, 59, 59, 999); // End of day
+    
+//     console.log('🔍 Checking availability for:', {
+//       from: checkFromDate.toISOString(),
+//       to: checkToDate.toISOString(),
+//       fromDateStr: params.from_date,
+//       toDateStr: params.to_date
+//     });
+    
+//     // 3. Find all bookings that conflict with the requested dates
+//     const conflictingRoomIds = new Set<number>();
+    
+//     for (const booking of allBookings) {
+//       // Consider ALL statuses that make a room unavailable
+//       const unavailableStatuses = ['booked', 'blocked', 'maintenance'];
+//       if (!unavailableStatuses.includes(booking.status?.toLowerCase())) {
+//         continue;
+//       }
+      
+//       // Skip if missing dates
+//       if (!booking.from_date || !booking.to_date) {
+//         continue;
+//       }
+      
+//       try {
+//         // Parse booking dates
+//         const bookingFromDate = new Date(booking.from_date);
+//         bookingFromDate.setHours(0, 0, 0, 0);
+        
+//         const bookingToDate = new Date(booking.to_date);
+//         bookingToDate.setHours(23, 59, 59, 999);
+        
+//         console.log(`📅 Checking booking ${booking.id}:`, {
+//           room_id: booking.room_id,
+//           from: bookingFromDate.toISOString(),
+//           to: bookingToDate.toISOString(),
+//           status: booking.status
+//         });
+        
+//         // Check if dates overlap using proper date comparison
+//         // Overlap occurs when: bookingFrom <= checkTo AND bookingTo >= checkFrom
+//         const hasOverlap = bookingFromDate <= checkToDate && bookingToDate >= checkFromDate;
+        
+//         if (hasOverlap) {
+//           console.log(`❌ Conflict found: Room ${booking.room_id} is booked from ${booking.from_date} to ${booking.to_date}`);
+//           conflictingRoomIds.add(booking.room_id);
+//         }
+//       } catch (dateError) {
+//         console.error('Error parsing dates for booking:', booking.id, dateError);
+//       }
+//     }
+    
+//     console.log('🚫 Conflicting room IDs:', Array.from(conflictingRoomIds));
+    
+//     // 4. Filter rooms that are NOT in the conflicting list
+//     const availableRooms = allRooms.filter(room => {
+//       // Skip if room is permanently blocked/maintenance in its own status
+//       if (room.status === 'maintenance' || room.status === 'blocked') {
+//         console.log(`Room ${room.id} (${room.room_number}) excluded: status is ${room.status}`);
+//         return false;
+//       }
+      
+//       // Skip if room has conflicting booking/maintenance
+//       if (conflictingRoomIds.has(room.id)) {
+//         console.log(`Room ${room.id} (${room.room_number}) excluded: has conflicting booking`);
+//         return false;
+//       }
+      
+//       console.log(`✅ Room ${room.id} (${room.room_number}) is available`);
+//       return true;
+//     });
+    
+//     console.log(`📊 Final available rooms: ${availableRooms.length} out of ${allRooms.length}`);
+    
+//     return availableRooms;
+    
+//   } catch (error) {
+//     console.error('❌ Error in getAvailableRoomsCorrectly:', error);
+//     return [];
+//   }
+// };
+
+
+/**
+ * Get available rooms correctly checking both regular and blocked bookings
+ */
+export const getAvailableRoomsCorrectly = async (params: { 
+  from_date: string; 
+  to_date: string;
+}): Promise<any[]> => {
+  try {
+    console.log('🔍 Checking availability for:', {
+      from: params.from_date,
+      to: params.to_date
+    });
+    
+    const token = localStorage.getItem('authToken');
+    
+    // First get all rooms
     const roomsResponse = await fetch(`${API_BASE_URL}/rooms`, {
-      method: 'GET',
-      headers: headers,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
     });
     
     if (!roomsResponse.ok) {
-      console.error('❌ Failed to fetch rooms:', roomsResponse.status);
-      return [];
+      throw new Error(`Failed to fetch rooms: ${roomsResponse.status}`);
     }
     
     const roomsResult = await roomsResponse.json();
     const allRooms = roomsResult.data || [];
     
-    // If no dates provided, return all rooms (or filter by non-permanent status)
-    if (!params?.from_date || !params?.to_date) {
-      // Return rooms that are not permanently blocked/maintenance
-      const availableByStatus = allRooms.filter(room => 
-        room.status !== 'maintenance' && room.status !== 'blocked'
-      );
-      return availableByStatus;
-    }
+    console.log(`🏨 Total rooms in hotel: ${allRooms.length}`);
     
-    // 2. Get all bookings for the hotel to check availability
+    // Get all bookings that might affect availability
     const bookingsResponse = await fetch(`${API_BASE_URL}/bookings`, {
-      method: 'GET',
-      headers: headers,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
     });
     
     if (!bookingsResponse.ok) {
-      console.error('❌ Failed to fetch bookings:', bookingsResponse.status);
-      return [];
+      throw new Error(`Failed to fetch bookings: ${bookingsResponse.status}`);
     }
     
     const bookingsResult = await bookingsResponse.json();
     const allBookings = bookingsResult.data || [];
     
-    // Parse the check dates
-    const checkFrom = new Date(params.from_date).getTime();
-    const checkTo = new Date(params.to_date).getTime();
+    console.log(`📅 Total bookings in system: ${allBookings.length}`);
     
-    // 3. Find all bookings that conflict with the requested dates
-    const conflictingRoomIds = new Set<number>();
+    // Parse dates
+    const checkFrom = new Date(params.from_date);
+    const checkTo = new Date(params.to_date);
     
-    for (const booking of allBookings) {
-      // Consider ALL statuses that make a room unavailable
-      const skipStatuses = ['available', 'completed', 'cancelled', 'checked_out', 'checked-out'];
-      if (skipStatuses.includes(booking.status?.toLowerCase())) {
-        continue;
-      }
-      
-      // Also check special_requests for maintenance keywords
-      const isMaintenance = booking.special_requests?.toLowerCase().includes('maintenance') || 
-                           booking.special_requests?.toLowerCase().includes('repair') ||
-                           booking.special_requests?.toLowerCase().includes('fix');
-      
-      // Skip if status is empty AND it's not maintenance
-      if (!booking.status && !isMaintenance) {
-        continue;
-      }
-      
-      // Skip if missing dates
-      if (!booking.from_date || !booking.to_date) {
-        continue;
-      }
-      
-      try {
-        const bookingFrom = new Date(booking.from_date).getTime();
-        const bookingTo = new Date(booking.to_date).getTime();
-        
-        // Check if dates overlap
-        const hasOverlap = bookingTo > checkFrom && bookingFrom < checkTo;
-        
-        if (hasOverlap) {
-          conflictingRoomIds.add(booking.room_id);
-        }
-      } catch (dateError) {
-        console.error('Error parsing dates for booking:', booking.id);
-      }
-    }
+    // Reset time part for accurate date comparison
+    checkFrom.setHours(0, 0, 0, 0);
+    checkTo.setHours(0, 0, 0, 0);
     
-    // 4. Filter rooms that are NOT in the conflicting list
-    const availableRooms = allRooms.filter(room => {
-      // Skip if room is permanently blocked/maintenance in its own status
-      if (room.status === 'maintenance' || room.status === 'blocked') {
-        return false;
+    // Find rooms that have conflicting bookings in the date range
+    const conflictingRoomIds = new Set();
+    
+    allBookings.forEach((booking: any) => {
+      // Only consider bookings that make the room unavailable
+      // BLOCKED and MAINTENANCE also make rooms unavailable, but only for their date range
+      if (!['booked', 'blocked', 'maintenance'].includes(booking.status)) {
+        return;
       }
       
-      // Skip if room has conflicting booking/maintenance
-      return !conflictingRoomIds.has(room.id);
+      const bookingFrom = new Date(booking.from_date);
+      const bookingTo = new Date(booking.to_date);
+      
+      bookingFrom.setHours(0, 0, 0, 0);
+      bookingTo.setHours(0, 0, 0, 0);
+      
+      // Check if the booking overlaps with the requested date range
+      const overlaps = (checkFrom <= bookingTo && checkTo >= bookingFrom);
+      
+      if (overlaps) {
+        console.log(`⚠️ Conflicting booking found:`, {
+          room_id: booking.room_id,
+          status: booking.status,
+          booking: `${booking.from_date} to ${booking.to_date}`,
+          requested: `${params.from_date} to ${params.to_date}`,
+          overlaps: true
+        });
+        conflictingRoomIds.add(booking.room_id);
+      }
     });
     
-    return availableRooms;
+    console.log('🚫 Conflicting room IDs for this date range:', [...conflictingRoomIds]);
     
+    // Filter rooms - only exclude if they have a conflicting booking in THIS date range
+    const availableRooms = allRooms.filter((room: any) => {
+      if (conflictingRoomIds.has(room.id)) {
+        console.log(`❌ Room ${room.id} (${room.room_number}) excluded - has booking in this date range`);
+        return false;
+      }
+      console.log(`✅ Room ${room.id} (${room.room_number}) is available for ${params.from_date} to ${params.to_date}`);
+      return true;
+    });
+    
+    console.log(`📊 Final available rooms: ${availableRooms.length} out of ${allRooms.length}`);
+    
+    return availableRooms;
   } catch (error) {
     console.error('❌ Error in getAvailableRoomsCorrectly:', error);
     return [];
   }
 };
 
-// ===========================================
-// BOOKING OPERATIONS
-// ===========================================
 
 export const createBooking = async (bookingData: any): Promise<any> => {
   try {
@@ -190,6 +436,35 @@ export const createBooking = async (bookingData: any): Promise<any> => {
     throw error;
   }
 };
+
+// export const checkRoomAvailability = async (
+//   roomId: number | string,
+//   fromDate: string,
+//   toDate: string
+// ): Promise<boolean> => {
+//   try {
+//     const response = await fetch(`${API_BASE_URL}/bookings/check-availability`, {
+//       method: 'POST',
+//       headers: getAuthHeaders(),
+//       body: JSON.stringify({
+//         room_id: roomId,
+//         from_date: fromDate,
+//         to_date: toDate
+//       }),
+//     });
+    
+//     const result = await handleResponse(response);
+//     return result.data?.available || false;
+//   } catch (error) {
+//     console.error('Error checking room availability:', error);
+//     return false;
+//   }
+// };
+
+// ===========================================
+// CUSTOMER OPERATIONS
+// ===========================================
+
 
 export const checkRoomAvailability = async (
   roomId: number | string,
@@ -208,17 +483,17 @@ export const checkRoomAvailability = async (
     });
     
     const result = await handleResponse(response);
+    
+    // Log the result for debugging
+    console.log(`🔍 Availability check for room ${roomId} from ${fromDate} to ${toDate}:`, 
+      result.data?.available ? '✅ Available' : '❌ Not Available');
+    
     return result.data?.available || false;
   } catch (error) {
     console.error('Error checking room availability:', error);
     return false;
   }
 };
-
-// ===========================================
-// CUSTOMER OPERATIONS
-// ===========================================
-
 export const searchCustomersByPhone = async (phone: string): Promise<any[]> => {
   try {
     if (!phone) {
@@ -324,3 +599,63 @@ export const searchCustomers = async (query: string): Promise<any[]> => {
     return [];
   }
 };
+
+
+// bookingApi.ts
+export const blockRoom = async (roomData: any): Promise<any> => {
+  try {
+    const blockData = {
+      roomId: roomData.room_id,
+      roomNumber: roomData.room_number,
+      fromDate: roomData.from_date,
+      toDate: roomData.to_date,
+      reason: roomData.special_requests || roomData.reason || 'Room blocked',
+      blockedBy: roomData.blockedBy || 'Admin'
+    };
+
+    const response = await fetch(`${API_BASE_URL}/bookings/block-room`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(blockData),
+    });
+
+    const result = await handleResponse(response);
+    return result;
+  } catch (error) {
+    console.error('❌ Error blocking room:', error);
+    throw error;
+  }
+};
+
+
+// Add this to your bookingApi.ts file
+
+/**
+ * Create a blocked room booking (no charges)
+ */
+// export const blockRoom = async (roomData: any): Promise<any> => {
+//   try {
+//     const blockData = {
+//       ...roomData,
+//       amount: 0,
+//       service: 0,
+//       gst: 0,
+//       total: 0,
+//       status: 'blocked',
+//       payment_method: 'none',
+//       payment_status: 'none'
+//     };
+
+//     const response = await fetch(`${API_BASE_URL}/bookings`, {
+//       method: 'POST',
+//       headers: getAuthHeaders(),
+//       body: JSON.stringify(blockData),
+//     });
+
+//     const result = await handleResponse(response);
+//     return result;
+//   } catch (error) {
+//     console.error('❌ Error blocking room:', error);
+//     throw error;
+//   }
+// };

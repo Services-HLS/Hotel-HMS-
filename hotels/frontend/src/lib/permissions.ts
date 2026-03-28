@@ -18,7 +18,9 @@ export type Permission =
   | 'view_collections'
   | 'view_expenses'
   | 'view_salaries'
-  | 'manage_housekeeping';
+  | 'manage_housekeeping'
+  |'manage_function_rooms';
+
 
 // Check if user has permission
 export const hasPermission = (permission: Permission): boolean => {

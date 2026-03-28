@@ -15,7 +15,6 @@ import {
   Home,
   Printer,
   RefreshCw,
-  Search,
   CheckCircle,
   Clock,
   AlertCircle,
@@ -116,21 +115,20 @@ const Housekeeping = () => {
   const [housekeepers, setHousekeepers] = useState<Housekeeper[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [housekeepersError, setHousekeepersError] = useState<string | null>(null);
-  
+
   // Filters
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [status, setStatus] = useState('all');
   const [cleaningType, setCleaningType] = useState('all');
   const [roomNumber, setRoomNumber] = useState('');
   const [housekeeperId, setHousekeeperId] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  
+
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showQuickUpdateModal, setShowQuickUpdateModal] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<HousekeepingRecord | null>(null);
-  
+
   // New record form
   const [newRecord, setNewRecord] = useState({
     room_id: '0',
@@ -143,7 +141,7 @@ const Housekeeping = () => {
     checkout_date: '',
     booking_id: ''
   });
-  
+
   // Update record form
   const [updateData, setUpdateData] = useState({
     status: 'pending' as 'pending' | 'in_progress' | 'completed' | 'delayed',
@@ -172,18 +170,17 @@ const Housekeeping = () => {
       if (cleaningType !== 'all') params.append('cleaning_type', cleaningType);
       if (roomNumber) params.append('room_number', roomNumber);
       if (housekeeperId !== 'all') params.append('housekeeper_id', housekeeperId);
-      if (searchQuery) params.append('search', searchQuery);
 
       const response = await fetch(
         `${backendUrl}/housekeeping?${params.toString()}`,
         {
-          headers: { 
+          headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           }
         }
       );
-      console.log("hotelhousekeeping",response)
+      console.log("hotelhousekeeping", response)
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
       const data = await response.json();
@@ -217,56 +214,56 @@ const Housekeeping = () => {
   const fetchData = async () => {
     setLoadingHousekeepers(true);
     setHousekeepersError(null);
-    
+
     try {
       const token = localStorage.getItem('authToken');
       if (!token) throw new Error('No authentication token found');
-      
+
       // Fetch housekeepers
       const housekeepersResponse = await fetch(
         `${backendUrl}/housekeeping/housekeepers`,
-        { 
-          headers: { 
+        {
+          headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
-          } 
+          }
         }
       );
-      
+
       if (!housekeepersResponse.ok) {
         throw new Error(`Failed to fetch housekeepers: ${housekeepersResponse.status}`);
       }
-      
+
       const housekeepersData = await housekeepersResponse.json();
-      
+
       if (housekeepersData.success) {
         setHousekeepers(housekeepersData.data || []);
       } else {
         throw new Error(housekeepersData.message || 'Failed to load housekeepers');
       }
-      
+
       // Fetch available rooms
       const roomsResponse = await fetch(
         `${backendUrl}/housekeeping/rooms`,
-        { 
-          headers: { 
+        {
+          headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
-          } 
+          }
         }
       );
-      
+
       if (!roomsResponse.ok) {
         throw new Error(`Failed to fetch rooms: ${roomsResponse.status}`);
       }
-      
+
       const roomsData = await roomsResponse.json();
       if (roomsData.success) {
         setRooms(roomsData.data || []);
       } else {
         throw new Error(roomsData.message || 'Failed to load rooms');
       }
-      
+
     } catch (error) {
       console.error('Error fetching data:', error);
       setHousekeepersError(error instanceof Error ? error.message : 'Failed to load data');
@@ -275,7 +272,7 @@ const Housekeeping = () => {
         description: "Could not load housekeepers data. Some features may be limited.",
         variant: "default"
       });
-      
+
       // Set empty arrays on error
       setHousekeepers([]);
       setRooms([]);
@@ -298,22 +295,22 @@ const Housekeeping = () => {
     try {
       const token = localStorage.getItem('authToken');
       const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
-      
+
       // Get room number for selected room
       const selectedRoom = rooms.find(room => room.id.toString() === newRecord.room_id);
       const room_number = selectedRoom?.room_number || `Room-${newRecord.room_id}`;
-      
+
       // Prepare housekeeper data
       let housekeeper_id = null;
       let housekeeper_name = null;
-      
+
       // If user selected from dropdown
       if (newRecord.housekeeper_id !== '0' && newRecord.housekeeper_id) {
         const selectedHousekeeper = housekeepers.find(hk => hk.id.toString() === newRecord.housekeeper_id);
         housekeeper_id = selectedHousekeeper?.id || null;
         housekeeper_name = selectedHousekeeper?.name || null;
       }
-      
+
       // If user entered manual name (overrides dropdown selection)
       if (newRecord.housekeeper_name.trim()) {
         housekeeper_name = newRecord.housekeeper_name.trim();
@@ -375,21 +372,21 @@ const Housekeeping = () => {
   // Update record status and details
   const updateRecord = async (id: number) => {
     if (!selectedRecord) return;
-    
+
     try {
       const token = localStorage.getItem('authToken');
-      
+
       // Prepare housekeeper data
       let housekeeper_id = null;
       let housekeeper_name = null;
-      
+
       // If user selected from dropdown
       if (updateData.housekeeper_id !== '0' && updateData.housekeeper_id) {
         const selectedHousekeeper = housekeepers.find(hk => hk.id.toString() === updateData.housekeeper_id);
         housekeeper_id = selectedHousekeeper?.id || null;
         housekeeper_name = selectedHousekeeper?.name || null;
       }
-      
+
       // If user entered manual name (overrides dropdown selection)
       if (updateData.housekeeper_name.trim()) {
         housekeeper_name = updateData.housekeeper_name.trim();
@@ -436,7 +433,7 @@ const Housekeeping = () => {
   const quickUpdateStatus = async (id: number) => {
     try {
       const token = localStorage.getItem('authToken');
-      
+
       const response = await fetch(`${backendUrl}/housekeeping/${id}/quick-update`, {
         method: 'PUT',
         headers: {
@@ -507,7 +504,7 @@ const Housekeeping = () => {
   // Delete record
   const deleteRecord = async (id: number) => {
     if (!confirm('Are you sure you want to delete this record?')) return;
-    
+
     try {
       const token = localStorage.getItem('authToken');
       const response = await fetch(`${backendUrl}/housekeeping/${id}`, {
@@ -565,8 +562,8 @@ const Housekeeping = () => {
       const response = await fetch(
         `${backendUrl}/housekeeping/export?date=${date}&status=${status}`,
         {
-          headers: { 
-            'Authorization': `Bearer ${token}` 
+          headers: {
+            'Authorization': `Bearer ${token}`
           }
         }
       );
@@ -580,7 +577,7 @@ const Housekeeping = () => {
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        
+
         toast({
           title: "Success",
           description: "Exported successfully",
@@ -604,7 +601,6 @@ const Housekeeping = () => {
     setCleaningType('all');
     setRoomNumber('');
     setHousekeeperId('all');
-    setSearchQuery('');
   };
 
   useEffect(() => {
@@ -639,9 +635,9 @@ const Housekeeping = () => {
         label: 'Delayed'
       }
     };
-    
+
     const variant = variants[status] || variants.pending;
-    
+
     return (
       <Badge variant="outline" className={`${variant.className} text-xs`}>
         <span className="flex items-center">
@@ -676,9 +672,9 @@ const Housekeeping = () => {
         label: 'Deep'
       }
     };
-    
+
     const variant = variants[type] || variants.daily;
-    
+
     return (
       <Badge variant="outline" className={`${variant.className} text-xs`}>
         <span className="flex items-center">
@@ -705,7 +701,7 @@ const Housekeeping = () => {
       housekeeper_id: value,
       housekeeper_name: value === '0' ? '' : newRecord.housekeeper_name // Clear manual name if selecting from dropdown
     });
-    
+
     // If a housekeeper is selected from dropdown, clear the manual name field
     if (value !== '0') {
       const selectedHousekeeper = housekeepers.find(hk => hk.id.toString() === value);
@@ -725,7 +721,7 @@ const Housekeeping = () => {
       housekeeper_id: value,
       housekeeper_name: value === '0' ? '' : updateData.housekeeper_name // Clear manual name if selecting from dropdown
     });
-    
+
     // If a housekeeper is selected from dropdown, clear the manual name field
     if (value !== '0') {
       const selectedHousekeeper = housekeepers.find(hk => hk.id.toString() === value);
@@ -748,10 +744,6 @@ const Housekeeping = () => {
             <p className="text-muted-foreground">Manage room cleaning and maintenance</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={fetchRecords} variant="outline" size="sm" disabled={loading}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              {loading ? 'Loading...' : 'Refresh Tasks'}
-            </Button>
             <Button onClick={fetchData} variant="outline" size="sm" disabled={loadingHousekeepers}>
               <RefreshCw className="h-4 w-4 mr-2" />
               {loadingHousekeepers ? 'Loading...' : 'Refresh Data'}
@@ -896,19 +888,6 @@ const Housekeeping = () => {
                 </Select>
               </div>
               <div className="flex items-end gap-2">
-                <div className="flex-1">
-                  <Label htmlFor="search" className="text-sm">Search</Label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Search className="h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="search"
-                      placeholder="Search room..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="h-9"
-                    />
-                  </div>
-                </div>
                 <Button onClick={fetchRecords} className="h-9 mt-1" disabled={loading}>
                   <Filter className="h-4 w-4 mr-2" />
                   {loading ? 'Loading...' : 'Filter'}
@@ -1097,9 +1076,9 @@ const Housekeeping = () => {
             <div className="space-y-4 py-4">
               <div>
                 <Label htmlFor="room_id">Room *</Label>
-                <Select 
-                  value={newRecord.room_id} 
-                  onValueChange={(value) => setNewRecord({...newRecord, room_id: value})}
+                <Select
+                  value={newRecord.room_id}
+                  onValueChange={(value) => setNewRecord({ ...newRecord, room_id: value })}
                   disabled={loadingHousekeepers}
                 >
                   <SelectTrigger className="mt-1">
@@ -1120,7 +1099,7 @@ const Housekeeping = () => {
                   </SelectContent>
                 </Select>
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="cleaning_date">Cleaning Date *</Label>
@@ -1137,9 +1116,9 @@ const Housekeeping = () => {
                 </div>
                 <div>
                   <Label htmlFor="cleaning_type">Cleaning Type *</Label>
-                  <Select 
-                    value={newRecord.cleaning_type} 
-                    onValueChange={(value: any) => 
+                  <Select
+                    value={newRecord.cleaning_type}
+                    onValueChange={(value: any) =>
                       setNewRecord({
                         ...newRecord,
                         cleaning_type: value
@@ -1158,12 +1137,12 @@ const Housekeeping = () => {
                   </Select>
                 </div>
               </div>
-              
+
               <div className="space-y-3">
                 <div>
                   <Label htmlFor="housekeeper_id">Assign Housekeeper (Select from list)</Label>
-                  <Select 
-                    value={newRecord.housekeeper_id} 
+                  <Select
+                    value={newRecord.housekeeper_id}
                     onValueChange={handleHousekeeperSelect}
                     disabled={loadingHousekeepers}
                   >
@@ -1186,7 +1165,7 @@ const Housekeeping = () => {
                     </SelectContent>
                   </Select>
                 </div>
-                
+
                 <div className="relative">
                   <div className="flex items-center gap-2 mb-1">
                     <Label htmlFor="housekeeper_name">Or Enter Housekeeper Name</Label>
@@ -1211,7 +1190,7 @@ const Housekeeping = () => {
                   </p>
                 </div>
               </div>
-              
+
               <div>
                 <Label htmlFor="notes">Notes</Label>
                 <Textarea
@@ -1282,14 +1261,14 @@ const Housekeeping = () => {
                     </div>
                   )}
                 </div>
-                
+
                 <div className="space-y-3">
                   <div>
                     <Label htmlFor="status">Update Status</Label>
-                    <Select 
-                      value={updateData.status} 
-                      onValueChange={(value: any) => 
-                        setUpdateData({...updateData, status: value})
+                    <Select
+                      value={updateData.status}
+                      onValueChange={(value: any) =>
+                        setUpdateData({ ...updateData, status: value })
                       }
                     >
                       <SelectTrigger className="mt-1">
@@ -1303,12 +1282,12 @@ const Housekeeping = () => {
                       </SelectContent>
                     </Select>
                   </div>
-                  
+
                   <div className="space-y-3">
                     <div>
                       <Label htmlFor="housekeeper_id">Assign Housekeeper (Select from list)</Label>
-                      <Select 
-                        value={updateData.housekeeper_id} 
+                      <Select
+                        value={updateData.housekeeper_id}
                         onValueChange={handleUpdateHousekeeperSelect}
                         disabled={loadingHousekeepers}
                       >
@@ -1331,7 +1310,7 @@ const Housekeeping = () => {
                         </SelectContent>
                       </Select>
                     </div>
-                    
+
                     <div>
                       <div className="flex items-center gap-2 mb-1">
                         <Label htmlFor="housekeeper_name">Or Enter Housekeeper Name</Label>
@@ -1353,7 +1332,7 @@ const Housekeeping = () => {
                       </div>
                     </div>
                   </div>
-                  
+
                   <div>
                     <Label htmlFor="notes">Update Notes</Label>
                     <Textarea
@@ -1412,14 +1391,14 @@ const Housekeeping = () => {
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="space-y-3">
                   <div>
                     <Label htmlFor="quick_status">Update to</Label>
-                    <Select 
-                      value={quickUpdateData.status} 
-                      onValueChange={(value: any) => 
-                        setQuickUpdateData({...quickUpdateData, status: value})
+                    <Select
+                      value={quickUpdateData.status}
+                      onValueChange={(value: any) =>
+                        setQuickUpdateData({ ...quickUpdateData, status: value })
                       }
                     >
                       <SelectTrigger className="mt-1">
@@ -1433,7 +1412,7 @@ const Housekeeping = () => {
                       </SelectContent>
                     </Select>
                   </div>
-                  
+
                   <div>
                     <Label htmlFor="quick_notes">Add Note (Optional)</Label>
                     <Textarea

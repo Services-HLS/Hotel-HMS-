@@ -17,4 +17,12 @@ router.post('/:id/convert', advanceBookingController.convertToBooking);
 router.post('/:id/cancel', advanceBookingController.cancelAdvanceBooking);
 router.get('/:id/invoice', advanceBookingController.generateInvoice);
 
+// routes/advanceBookings.js - Add these routes
+
+// Multi-room advance booking routes
+router.post('/multiple', advanceBookingController.createMultipleAdvanceBookings);
+router.get('/group/:groupId', advanceBookingController.getGroupAdvanceBookings);
+// routes/advanceBookings.js
+router.post('/check-availability', advanceBookingController.checkRoomAvailabilityForAdvance);
+
 module.exports = router;

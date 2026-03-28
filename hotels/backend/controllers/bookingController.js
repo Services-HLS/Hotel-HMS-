@@ -708,325 +708,325 @@ const bookingController = {
   // },
 
   // Get all bookings for hotel with details
- 
- 
- createBooking: async (req, res) => {
-  try {
-    const {
-      room_id,
-      customer_id,
-      from_date,
-      to_date,
-      from_time,
-      to_time,
-      amount,
-      service,
-      gst,
-      cgst,
-      sgst,
-      igst,
-      total,
-      status,
-      guests,
-      special_requests,
-      id_type,
-      payment_method,
-      payment_status,
-      transaction_id,
-      // Customer details
-      customer_name,
-      customer_phone,
-      customer_email,
-      customer_id_number,
-      id_image,
-      id_image2,
-      address,
-      city,
-      state,
-      pincode,
-      customer_gst_no,
-      purpose_of_visit,
-      other_expenses,
-      expense_description,
-      referral_by,
-      referral_amount
-    } = req.body;
 
-    const hotelId = req.user.hotel_id;
-    let finalCustomerId = customer_id;
-    let generatedTransactionId = transaction_id;
-    let isNewCustomer = false;
-    let existingCustomer = null;
 
-    console.log('📝 Create booking request:', {
-      hotelId,
-      room_id,
-      customer_id,
-      from_date,
-      to_date,
-      status,
-      customer_name,
-      customer_phone,
-      payment_method,
-      customer_email
-    });
+  createBooking: async (req, res) => {
+    try {
+      const {
+        room_id,
+        customer_id,
+        from_date,
+        to_date,
+        from_time,
+        to_time,
+        amount,
+        service,
+        gst,
+        cgst,
+        sgst,
+        igst,
+        total,
+        status,
+        guests,
+        special_requests,
+        id_type,
+        payment_method,
+        payment_status,
+        transaction_id,
+        // Customer details
+        customer_name,
+        customer_phone,
+        customer_email,
+        customer_id_number,
+        id_image,
+        id_image2,
+        address,
+        city,
+        state,
+        pincode,
+        customer_gst_no,
+        purpose_of_visit,
+        other_expenses,
+        expense_description,
+        referral_by,
+        referral_amount
+      } = req.body;
 
-    // ===========================================
-    // 1. VALIDATE ROOM
-    // ===========================================
-    const room = await Room.findById(room_id, hotelId);
-    if (!room) {
-      return res.status(404).json({
-        success: false,
-        error: 'ROOM_NOT_FOUND',
-        message: 'Room not found'
+      const hotelId = req.user.hotel_id;
+      let finalCustomerId = customer_id;
+      let generatedTransactionId = transaction_id;
+      let isNewCustomer = false;
+      let existingCustomer = null;
+
+      console.log('📝 Create booking request:', {
+        hotelId,
+        room_id,
+        customer_id,
+        from_date,
+        to_date,
+        status,
+        customer_name,
+        customer_phone,
+        payment_method,
+        customer_email
       });
-    }
 
-    // ===========================================
-    // 2. CUSTOMER HANDLING
-    // ===========================================
-    if (customer_name && customer_phone) {
-      try {
-        existingCustomer = await Customer.findByPhone(customer_phone, hotelId);
-
-        if (existingCustomer) {
-          finalCustomerId = existingCustomer.id;
-          console.log('✅ Found existing customer:', {
-            customerId: finalCustomerId,
-            name: existingCustomer.name
-          });
-
-          // Check for duplicate booking
-          if (status === 'booked' && finalCustomerId) {
-            const duplicateBooking = await Booking.checkDuplicateBooking(
-              hotelId,
-              room_id,
-              finalCustomerId,
-              from_date,
-              to_date
-            );
-
-            if (duplicateBooking) {
-              return res.status(400).json({
-                success: false,
-                error: 'DUPLICATE_BOOKING',
-                message: 'A booking already exists for this customer in the same room and dates',
-                data: {
-                  booking_id: duplicateBooking.id,
-                  customer_name: duplicateBooking.customer_name,
-                  room_number: duplicateBooking.room_number,
-                  from_date: duplicateBooking.from_date,
-                  to_date: duplicateBooking.to_date,
-                  status: duplicateBooking.status
-                }
-              });
-            }
-          }
-
-          // Update existing customer
-          await Customer.update(existingCustomer.id, hotelId, {
-            name: customer_name,
-            phone: customer_phone,
-            email: customer_email || existingCustomer.email,
-            id_number: customer_id_number || existingCustomer.id_number,
-            id_type: id_type || 'aadhaar',
-            id_image: id_image || existingCustomer.id_image,
-            id_image2: id_image2 || existingCustomer.id_image2,
-            address: address || existingCustomer.address,
-            city: city || existingCustomer.city,
-            state: state || existingCustomer.state,
-            pincode: pincode || existingCustomer.pincode,
-            customer_gst_no: customer_gst_no || existingCustomer.customer_gst_no,
-            purpose_of_visit: purpose_of_visit || existingCustomer.purpose_of_visit,
-            other_expenses: other_expenses || existingCustomer.other_expenses || 0,
-            expense_description: expense_description || existingCustomer.expense_description
-          });
-
-        } else {
-          // Create new customer
-          finalCustomerId = await Customer.create({
-            hotel_id: hotelId,
-            name: customer_name,
-            phone: customer_phone,
-            email: customer_email || '',
-            id_number: customer_id_number || '',
-            id_type: id_type || 'aadhaar',
-            id_image: id_image || null,
-            id_image2: id_image2 || null,
-            address: address || '',
-            city: city || '',
-            state: state || '',
-            pincode: pincode || '',
-            customer_gst_no: customer_gst_no,
-            purpose_of_visit: purpose_of_visit || null,
-            other_expenses: other_expenses || 0,
-            expense_description: expense_description || null
-          });
-          isNewCustomer = true;
-          console.log('✅ Created new customer:', { customerId: finalCustomerId });
-        }
-
-      } catch (customerError) {
-        console.error('❌ Customer creation error:', customerError);
-        return res.status(500).json({
+      // ===========================================
+      // 1. VALIDATE ROOM
+      // ===========================================
+      const room = await Room.findById(room_id, hotelId);
+      if (!room) {
+        return res.status(404).json({
           success: false,
-          error: 'CUSTOMER_CREATION_FAILED',
-          message: 'Failed to create/update customer'
+          error: 'ROOM_NOT_FOUND',
+          message: 'Room not found'
         });
       }
-    }
 
-    // ===========================================
-    // 3. CHECK ROOM AVAILABILITY
-    // ===========================================
-    const isAvailable = await Booking.checkRoomAvailability(room_id, hotelId, from_date, to_date, null, status);
-    if (!isAvailable) {
-      return res.status(400).json({
-        success: false,
-        error: 'ROOM_NOT_AVAILABLE',
-        message: 'Room is not available for the selected dates'
-      });
-    }
+      // ===========================================
+      // 2. CUSTOMER HANDLING
+      // ===========================================
+      if (customer_name && customer_phone) {
+        try {
+          existingCustomer = await Customer.findByPhone(customer_phone, hotelId);
 
-    let invoiceNumber = req.body.invoice_number;
-    if (!invoiceNumber) {
-      invoiceNumber = await Booking.getNextInvoiceNumber(hotelId);
-    }
+          if (existingCustomer) {
+            finalCustomerId = existingCustomer.id;
+            console.log('✅ Found existing customer:', {
+              customerId: finalCustomerId,
+              name: existingCustomer.name
+            });
 
-    const otherExpensesValue = parseFloat(other_expenses) || 0;
+            // Check for duplicate booking
+            if (status === 'booked' && finalCustomerId) {
+              const duplicateBooking = await Booking.checkDuplicateBooking(
+                hotelId,
+                room_id,
+                finalCustomerId,
+                from_date,
+                to_date
+              );
 
-    // Calculate total
-    const calculatedTotal = parseFloat(amount || 0) +
-      parseFloat(service || 0) +
-      parseFloat(gst || 0) +
-      otherExpensesValue;
+              if (duplicateBooking) {
+                return res.status(400).json({
+                  success: false,
+                  error: 'DUPLICATE_BOOKING',
+                  message: 'A booking already exists for this customer in the same room and dates',
+                  data: {
+                    booking_id: duplicateBooking.id,
+                    customer_name: duplicateBooking.customer_name,
+                    room_number: duplicateBooking.room_number,
+                    from_date: duplicateBooking.from_date,
+                    to_date: duplicateBooking.to_date,
+                    status: duplicateBooking.status
+                  }
+                });
+              }
+            }
 
-    const finalTotal = parseFloat(total || calculatedTotal);
+            // Update existing customer
+            await Customer.update(existingCustomer.id, hotelId, {
+              name: customer_name,
+              phone: customer_phone,
+              email: customer_email || existingCustomer.email,
+              id_number: customer_id_number || existingCustomer.id_number,
+              id_type: id_type || 'aadhaar',
+              id_image: id_image || existingCustomer.id_image,
+              id_image2: id_image2 || existingCustomer.id_image2,
+              address: address || existingCustomer.address,
+              city: city || existingCustomer.city,
+              state: state || existingCustomer.state,
+              pincode: pincode || existingCustomer.pincode,
+              customer_gst_no: customer_gst_no || existingCustomer.customer_gst_no,
+              purpose_of_visit: purpose_of_visit || existingCustomer.purpose_of_visit,
+              other_expenses: other_expenses || existingCustomer.other_expenses || 0,
+              expense_description: expense_description || existingCustomer.expense_description
+            });
 
-    // ===========================================
-    // 4. CREATE BOOKING
-    // ===========================================
-    const bookingData = {
-      hotel_id: hotelId,
-      room_id,
-      customer_id: status === 'booked' ? finalCustomerId : null,
-      from_date,
-      to_date,
-      from_time: from_time || '14:00',
-      to_time: to_time || '12:00',
-      amount: parseFloat(amount || 0),
-      service: parseFloat(service || 0),
-      gst: parseFloat(gst || 0),
-      cgst: parseFloat(cgst || 0),
-      sgst: parseFloat(sgst || 0),
-      igst: parseFloat(igst || 0),
-      total: finalTotal,
-      invoice_number: invoiceNumber,
-      status: status || 'booked',
-      guests: parseInt(guests || 1),
-      special_requests: special_requests || '',
-      id_type: id_type || 'aadhaar',
-      payment_method: payment_method || 'cash',
-      payment_status: payment_status || 'pending',
-      transaction_id: transaction_id || null,
-      referral_by: referral_by || '',
-      referral_amount: parseFloat(referral_amount || 0)
-    };
-
-    console.log('📅 Creating booking:', bookingData);
-
-    let bookingId;
-    if (status === 'booked' && finalCustomerId) {
-      bookingId = await Booking.create(bookingData);
-    } else {
-      bookingId = await Booking.createWithoutCustomer(bookingData);
-    }
-
-    console.log('✅ Booking created successfully:', { bookingId });
-
-    // ===========================================
-    // 5. UPDATE ROOM STATUS
-    // ===========================================
-    if (status === 'booked') {
-      await Room.updateStatus(room_id, hotelId, 'booked');
-    }
-
-    // ===========================================
-    // 6. CREATE TRANSACTION RECORD IF PAYMENT IS ONLINE
-    // ===========================================
-    let transactionRecord = null;
-    if (payment_method === 'online' && status === 'booked') {
-      try {
-        generatedTransactionId = transaction_id || `TXN${Date.now()}${Math.floor(Math.random() * 1000)}`;
-
-        transactionRecord = await Transaction.create({
-          hotel_id: hotelId,
-          booking_id: bookingId,
-          customer_id: finalCustomerId,
-          transaction_id: generatedTransactionId,
-          amount: parseFloat(total || 0),
-          currency: 'INR',
-          payment_method: 'online',
-          payment_gateway: 'upi',
-          status: payment_status || 'pending',
-          status_message: payment_status === 'completed' ? 'Payment completed' : 'Payment initiated',
-          metadata: {
-            room_id: room_id,
-            room_number: room.room_number,
-            from_date: from_date,
-            to_date: to_date,
-            customer_name: customer_name,
-            customer_phone: customer_phone
+          } else {
+            // Create new customer
+            finalCustomerId = await Customer.create({
+              hotel_id: hotelId,
+              name: customer_name,
+              phone: customer_phone,
+              email: customer_email || '',
+              id_number: customer_id_number || '',
+              id_type: id_type || 'aadhaar',
+              id_image: id_image || null,
+              id_image2: id_image2 || null,
+              address: address || '',
+              city: city || '',
+              state: state || '',
+              pincode: pincode || '',
+              customer_gst_no: customer_gst_no,
+              purpose_of_visit: purpose_of_visit || null,
+              other_expenses: other_expenses || 0,
+              expense_description: expense_description || null
+            });
+            isNewCustomer = true;
+            console.log('✅ Created new customer:', { customerId: finalCustomerId });
           }
-        });
 
-        console.log('💰 Transaction created:', {
-          transactionId: generatedTransactionId,
-          transactionRecordId: transactionRecord
-        });
-
-        if (!transaction_id) {
-          await Booking.update(bookingId, hotelId, {
-            transaction_id: generatedTransactionId
+        } catch (customerError) {
+          console.error('❌ Customer creation error:', customerError);
+          return res.status(500).json({
+            success: false,
+            error: 'CUSTOMER_CREATION_FAILED',
+            message: 'Failed to create/update customer'
           });
         }
+      }
 
-        if (payment_status === 'completed') {
-          await Transaction.updateStatus(transactionRecord, hotelId, {
-            status: 'success',
-            status_message: 'Payment completed successfully',
-            gateway_transaction_id: generatedTransactionId
+      // ===========================================
+      // 3. CHECK ROOM AVAILABILITY
+      // ===========================================
+      const isAvailable = await Booking.checkRoomAvailability(room_id, hotelId, from_date, to_date, null, status);
+      if (!isAvailable) {
+        return res.status(400).json({
+          success: false,
+          error: 'ROOM_NOT_AVAILABLE',
+          message: 'Room is not available for the selected dates'
+        });
+      }
+
+      let invoiceNumber = req.body.invoice_number;
+      if (!invoiceNumber) {
+        invoiceNumber = await Booking.getNextInvoiceNumber(hotelId);
+      }
+
+      const otherExpensesValue = parseFloat(other_expenses) || 0;
+
+      // Calculate total
+      const calculatedTotal = parseFloat(amount || 0) +
+        parseFloat(service || 0) +
+        parseFloat(gst || 0) +
+        otherExpensesValue;
+
+      const finalTotal = parseFloat(total || calculatedTotal);
+
+      // ===========================================
+      // 4. CREATE BOOKING
+      // ===========================================
+      const bookingData = {
+        hotel_id: hotelId,
+        room_id,
+        customer_id: status === 'booked' ? finalCustomerId : null,
+        from_date,
+        to_date,
+        from_time: from_time || '14:00',
+        to_time: to_time || '12:00',
+        amount: parseFloat(amount || 0),
+        service: parseFloat(service || 0),
+        gst: parseFloat(gst || 0),
+        cgst: parseFloat(cgst || 0),
+        sgst: parseFloat(sgst || 0),
+        igst: parseFloat(igst || 0),
+        total: finalTotal,
+        invoice_number: invoiceNumber,
+        status: status || 'booked',
+        guests: parseInt(guests || 1),
+        special_requests: special_requests || '',
+        id_type: id_type || 'aadhaar',
+        payment_method: payment_method || 'cash',
+        payment_status: payment_status || 'pending',
+        transaction_id: transaction_id || null,
+        referral_by: referral_by || '',
+        referral_amount: parseFloat(referral_amount || 0)
+      };
+
+      console.log('📅 Creating booking:', bookingData);
+
+      let bookingId;
+      if (status === 'booked' && finalCustomerId) {
+        bookingId = await Booking.create(bookingData);
+      } else {
+        bookingId = await Booking.createWithoutCustomer(bookingData);
+      }
+
+      console.log('✅ Booking created successfully:', { bookingId });
+
+      // ===========================================
+      // 5. UPDATE ROOM STATUS
+      // ===========================================
+      if (status === 'booked') {
+        await Room.updateStatus(room_id, hotelId, 'booked');
+      }
+
+      // ===========================================
+      // 6. CREATE TRANSACTION RECORD IF PAYMENT IS ONLINE
+      // ===========================================
+      let transactionRecord = null;
+      if (payment_method === 'online' && status === 'booked') {
+        try {
+          generatedTransactionId = transaction_id || `TXN${Date.now()}${Math.floor(Math.random() * 1000)}`;
+
+          transactionRecord = await Transaction.create({
+            hotel_id: hotelId,
+            booking_id: bookingId,
+            customer_id: finalCustomerId,
+            transaction_id: generatedTransactionId,
+            amount: parseFloat(total || 0),
+            currency: 'INR',
+            payment_method: 'online',
+            payment_gateway: 'upi',
+            status: payment_status || 'pending',
+            status_message: payment_status === 'completed' ? 'Payment completed' : 'Payment initiated',
+            metadata: {
+              room_id: room_id,
+              room_number: room.room_number,
+              from_date: from_date,
+              to_date: to_date,
+              customer_name: customer_name,
+              customer_phone: customer_phone
+            }
           });
+
+          console.log('💰 Transaction created:', {
+            transactionId: generatedTransactionId,
+            transactionRecordId: transactionRecord
+          });
+
+          if (!transaction_id) {
+            await Booking.update(bookingId, hotelId, {
+              transaction_id: generatedTransactionId
+            });
+          }
+
+          if (payment_status === 'completed') {
+            await Transaction.updateStatus(transactionRecord, hotelId, {
+              status: 'success',
+              status_message: 'Payment completed successfully',
+              gateway_transaction_id: generatedTransactionId
+            });
+          }
+
+        } catch (transactionError) {
+          console.error('❌ Transaction creation error:', transactionError);
         }
-
-      } catch (transactionError) {
-        console.error('❌ Transaction creation error:', transactionError);
       }
-    }
 
-    // ===========================================
-    // 7. CREATE COLLECTION FOR CASH PAYMENT
-    // ===========================================
-    if (payment_method === 'cash' && status === 'booked') {
-      try {
-        await Collection.createFromCashBooking(bookingId, hotelId, req.user.userId);
-        console.log('✅ Auto-created collection for cash booking');
-      } catch (collectionError) {
-        console.error('❌ Failed to auto-create collection:', collectionError);
+      // ===========================================
+      // 7. CREATE COLLECTION FOR CASH PAYMENT
+      // ===========================================
+      if (payment_method === 'cash' && status === 'booked') {
+        try {
+          await Collection.createFromCashBooking(bookingId, hotelId, req.user.userId);
+          console.log('✅ Auto-created collection for cash booking');
+        } catch (collectionError) {
+          console.error('❌ Failed to auto-create collection:', collectionError);
+        }
       }
-    }
 
-    // ===========================================
-    // 8. SEND EMAIL AND WHATSAPP (KEEP THIS ONE)
-    // ===========================================
-    if (status === 'booked') {
-      try {
-        // Send email and WhatsApp asynchronously
-        setTimeout(async () => {
-          try {
-            // Get full booking details
-            const [fullBooking] = await pool.execute(`
+      // ===========================================
+      // 8. SEND EMAIL AND WHATSAPP (KEEP THIS ONE)
+      // ===========================================
+      if (status === 'booked') {
+        try {
+          // Send email and WhatsApp asynchronously
+          setTimeout(async () => {
+            try {
+              // Get full booking details
+              const [fullBooking] = await pool.execute(`
               SELECT b.*, r.room_number, r.type as room_type,
                      c.name as customer_name, c.email as customer_email, c.phone as customer_phone,
                      c.customer_gst_no, c.address, c.city, c.state, c.pincode,
@@ -1038,144 +1038,188 @@ const bookingController = {
               WHERE b.id = ? AND b.hotel_id = ?
             `, [bookingId, hotelId]);
 
-            if (fullBooking.length > 0) {
-              const booking = fullBooking[0];
+              if (fullBooking.length > 0) {
+                const booking = fullBooking[0];
 
-              // Get hotel admin email
-              const [adminRows] = await pool.execute(
-                `SELECT email, name, phone FROM users 
+                // Get hotel admin email
+                const [adminRows] = await pool.execute(
+                  `SELECT email, name, phone FROM users 
                  WHERE hotel_id = ? AND role = 'admin' AND status = 'active'
                  LIMIT 1`,
-                [hotelId]
-              );
+                  [hotelId]
+                );
 
-              const hotelAdmin = adminRows.length > 0 ? adminRows[0] : null;
-              const hotelAdminEmail = hotelAdmin ? hotelAdmin.email : process.env.EMAIL_USER;
-              const hotelAdminName = hotelAdmin ? hotelAdmin.name : 'Hotel Admin';
-              const hotelAdminPhone = hotelAdmin ? hotelAdmin.phone : null;
+                const hotelAdmin = adminRows.length > 0 ? adminRows[0] : null;
+                const hotelAdminEmail = hotelAdmin ? hotelAdmin.email : process.env.EMAIL_USER;
+                const hotelAdminName = hotelAdmin ? hotelAdmin.name : 'Hotel Admin';
+                const hotelAdminPhone = hotelAdmin ? hotelAdmin.phone : null;
 
-              const hotelDetails = {
-                name: booking.hotel_name || 'Hotel',
-                email: hotelAdminEmail,
-                address: ''
-              };
+                const hotelDetails = {
+                  name: booking.hotel_name || 'Hotel',
+                  email: hotelAdminEmail,
+                  address: ''
+                };
 
-              const hotelOwnerDetails = {
-                name: hotelAdminName,
-                email: hotelAdminEmail,
-                phone: hotelAdminPhone
-              };
+                const hotelOwnerDetails = {
+                  name: hotelAdminName,
+                  email: hotelAdminEmail,
+                  phone: hotelAdminPhone
+                };
 
-              const customerEmail = booking.customer_email || customer_email;
-              const customerName = booking.customer_name || customer_name;
-              const customerPhone = booking.customer_phone || customer_phone;
+                const customerEmail = booking.customer_email || customer_email;
+                const customerName = booking.customer_name || customer_name;
+                const customerPhone = booking.customer_phone || customer_phone;
 
-              const customerDetails = {
-                name: customerName,
-                email: customerEmail,
-                phone: customerPhone
-              };
+                const customerDetails = {
+                  name: customerName,
+                  email: customerEmail,
+                  phone: customerPhone
+                };
 
-              // 1. SEND EMAIL
-              if (customerDetails.email) {
-                await EmailService.sendBookingConfirmation(booking, hotelDetails, customerDetails, {
-                  companyLogoUrl: companyLogoBase64,
-                  companyName: 'Hithlaksh Solutions Private Limited',
-                  companyWebsite: 'https://hithlakshsolutions.com/',
-                  privacyLink: 'https://hithlakshsolutions.com/privacy',
-                  termsLink: 'https://hithlakshsolutions.com/terms'
-                });
-                console.log(`✅ Booking confirmation email sent to customer`);
-              } else {
-                console.log(`⚠️ No email for customer - booking ${bookingId}`);
-              }
-
-              // 2. SEND WHATSAPP
-              if (customerDetails.phone || hotelOwnerDetails.phone) {
-                try {
-                  const whatsappResults = await WhatsAppService.sendBookingConfirmationToAll(
-                    booking,
-                    booking.hotel_name || 'Hotel',
-                    customerDetails,
-                    hotelOwnerDetails
-                  );
-
-                  if (whatsappResults.customer?.success) {
-                    console.log(`📱 WhatsApp sent to customer: ${customerDetails.name}`);
-                  }
-                  if (whatsappResults.hotelOwner?.success) {
-                    console.log(`📱 WhatsApp sent to hotel owner: ${hotelOwnerDetails.name}`);
-                  }
-                } catch (whatsappError) {
-                  console.error(`❌ WhatsApp error:`, whatsappError.message);
+                // 1. SEND EMAIL
+                if (customerDetails.email) {
+                  await EmailService.sendBookingConfirmation(booking, hotelDetails, customerDetails, {
+                    companyLogoUrl: companyLogoBase64,
+                    companyName: 'Hithlaksh Solutions Private Limited',
+                    companyWebsite: 'https://hithlakshsolutions.com/',
+                    privacyLink: 'https://hithlakshsolutions.com/privacy',
+                    termsLink: 'https://hithlakshsolutions.com/terms'
+                  });
+                  console.log(`✅ Booking confirmation email sent to customer`);
+                } else {
+                  console.log(`⚠️ No email for customer - booking ${bookingId}`);
                 }
-              } else {
-                console.log(`📱 No phone numbers for WhatsApp - booking ${bookingId}`);
+
+                // 2. SEND WHATSAPP
+                if (customerDetails.phone || hotelOwnerDetails.phone) {
+                  try {
+                    const whatsappResults = await WhatsAppService.sendBookingConfirmationToAll(
+                      booking,
+                      booking.hotel_name || 'Hotel',
+                      customerDetails,
+                      hotelOwnerDetails
+                    );
+
+                    if (whatsappResults.customer?.success) {
+                      console.log(`📱 WhatsApp sent to customer: ${customerDetails.name}`);
+                    }
+                    if (whatsappResults.hotelOwner?.success) {
+                      console.log(`📱 WhatsApp sent to hotel owner: ${hotelOwnerDetails.name}`);
+                    }
+                  } catch (whatsappError) {
+                    console.error(`❌ WhatsApp error:`, whatsappError.message);
+                  }
+                } else {
+                  console.log(`📱 No phone numbers for WhatsApp - booking ${bookingId}`);
+                }
               }
+            } catch (error) {
+              console.error('❌ Error sending booking confirmations:', error);
             }
-          } catch (error) {
-            console.error('❌ Error sending booking confirmations:', error);
-          }
-        }, 1000);
-      } catch (error) {
-        console.error('❌ Confirmation setup error:', error);
+          }, 1000);
+        } catch (error) {
+          console.error('❌ Confirmation setup error:', error);
+        }
       }
-    }
 
-    // ===========================================
-    // 9. RESPONSE
-    // ===========================================
-    const responseData = {
-      bookingId: bookingId,
-      customerId: finalCustomerId,
-      isNewCustomer: isNewCustomer,
-      bookingDetails: {
-        room_id: room_id,
-        room_number: room.room_number,
-        from_date: from_date,
-        to_date: to_date,
-        status: status || 'booked',
-        total: parseFloat(total || 0),
-        payment_method: payment_method,
-        referral_by: referral_by || '',
-        referral_amount: parseFloat(referral_amount || 0)
-      }
-    };
-
-    if (transactionRecord) {
-      responseData.transaction = {
-        transactionId: generatedTransactionId,
-        transactionRecordId: transactionRecord,
-        amount: parseFloat(total || 0),
-        payment_method: payment_method,
-        payment_status: payment_status || 'pending'
+      // ===========================================
+      // 9. RESPONSE
+      // ===========================================
+      const responseData = {
+        bookingId: bookingId,
+        customerId: finalCustomerId,
+        isNewCustomer: isNewCustomer,
+        bookingDetails: {
+          room_id: room_id,
+          room_number: room.room_number,
+          from_date: from_date,
+          to_date: to_date,
+          status: status || 'booked',
+          total: parseFloat(total || 0),
+          payment_method: payment_method,
+          referral_by: referral_by || '',
+          referral_amount: parseFloat(referral_amount || 0)
+        }
       };
+
+      if (transactionRecord) {
+        responseData.transaction = {
+          transactionId: generatedTransactionId,
+          transactionRecordId: transactionRecord,
+          amount: parseFloat(total || 0),
+          payment_method: payment_method,
+          payment_status: payment_status || 'pending'
+        };
+      }
+
+      res.status(201).json({
+        success: true,
+        message: isNewCustomer ? 'New customer and booking created successfully' : 'Booking created successfully',
+        data: responseData
+      });
+
+    } catch (error) {
+      console.error('❌ Create booking error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'SERVER_ERROR',
+        message: 'Internal server error: ' + error.message
+      });
     }
+  },
 
-    res.status(201).json({
-      success: true,
-      message: isNewCustomer ? 'New customer and booking created successfully' : 'Booking created successfully',
-      data: responseData
-    });
+  // getBookings: async (req, res) => {
+  //   try {
+  //     const hotelId = req.user.hotel_id;
+  //     const bookings = await Booking.findByHotelWithDetails(hotelId);
 
-  } catch (error) {
-    console.error('❌ Create booking error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'SERVER_ERROR',
-      message: 'Internal server error: ' + error.message
-    });
-  }
-},
- 
+  //     res.json({
+  //       success: true,
+  //       data: bookings
+  //     });
+
+  //   } catch (error) {
+  //     console.error('Get bookings error:', error);
+  //     res.status(500).json({
+  //       success: false,
+  //       error: 'SERVER_ERROR',
+  //       message: 'Internal server error'
+  //     });
+  //   }
+  // },
+
+
+
+
+  // Get booking by ID
+
+  // In bookingController.js - Update or add this method
   getBookings: async (req, res) => {
     try {
       const hotelId = req.user.hotel_id;
-      const bookings = await Booking.findByHotelWithDetails(hotelId);
+
+      // Modified query to include advance booking details
+      const [rows] = await pool.execute(`
+      SELECT b.*, 
+             c.name as customer_name,
+             c.phone as customer_phone,
+             c.email as customer_email,
+             r.room_number,
+             r.type as room_type,
+             ab.invoice_number as advance_invoice_number,
+             ab.advance_amount as original_advance_amount,
+             ab.status as advance_status
+      FROM bookings b
+      LEFT JOIN customers c ON b.customer_id = c.id
+      LEFT JOIN rooms r ON b.room_id = r.id
+      LEFT JOIN advance_bookings ab ON b.advance_booking_id = ab.id
+      WHERE b.hotel_id = ?
+      ORDER BY b.created_at DESC
+    `, [hotelId]);
 
       res.json({
         success: true,
-        data: bookings
+        data: rows
       });
 
     } catch (error) {
@@ -1188,7 +1232,7 @@ const bookingController = {
     }
   },
 
-  // Get booking by ID
+
   getBooking: async (req, res) => {
     try {
       const { id } = req.params;
@@ -1394,318 +1438,318 @@ const bookingController = {
   //   }
   // },
 
-// Update booking
-// updateBooking: async (req, res) => {
-//   try {
-//     const { id } = req.params;
-//     const hotelId = req.user.hotel_id;
-//     const bookingData = req.body;
+  // Update booking
+  // updateBooking: async (req, res) => {
+  //   try {
+  //     const { id } = req.params;
+  //     const hotelId = req.user.hotel_id;
+  //     const bookingData = req.body;
 
-//     console.log('📝 Update booking request:', { id, hotelId, bookingData });
+  //     console.log('📝 Update booking request:', { id, hotelId, bookingData });
 
-//     // Get current booking details
-//     const currentBooking = await Booking.findById(id, hotelId);
-//     if (!currentBooking) {
-//       return res.status(404).json({
-//         success: false,
-//         error: 'BOOKING_NOT_FOUND',
-//         message: 'Booking not found'
-//       });
-//     }
+  //     // Get current booking details
+  //     const currentBooking = await Booking.findById(id, hotelId);
+  //     if (!currentBooking) {
+  //       return res.status(404).json({
+  //         success: false,
+  //         error: 'BOOKING_NOT_FOUND',
+  //         message: 'Booking not found'
+  //       });
+  //     }
 
-//     // ===========================================
-//     // CHECK FOR DUPLICATE WHEN UPDATING
-//     // ===========================================
-//     if ((bookingData.room_id || currentBooking.room_id) &&
-//         (bookingData.customer_id || currentBooking.customer_id) &&
-//         (bookingData.from_date || currentBooking.from_date) &&
-//         (bookingData.to_date || currentBooking.to_date)) {
+  //     // ===========================================
+  //     // CHECK FOR DUPLICATE WHEN UPDATING
+  //     // ===========================================
+  //     if ((bookingData.room_id || currentBooking.room_id) &&
+  //         (bookingData.customer_id || currentBooking.customer_id) &&
+  //         (bookingData.from_date || currentBooking.from_date) &&
+  //         (bookingData.to_date || currentBooking.to_date)) {
 
-//       const checkRoomId = bookingData.room_id || currentBooking.room_id;
-//       const checkCustomerId = bookingData.customer_id || currentBooking.customer_id;
-//       const checkFromDate = bookingData.from_date || currentBooking.from_date;
-//       const checkToDate = bookingData.to_date || currentBooking.to_date;
+  //       const checkRoomId = bookingData.room_id || currentBooking.room_id;
+  //       const checkCustomerId = bookingData.customer_id || currentBooking.customer_id;
+  //       const checkFromDate = bookingData.from_date || currentBooking.from_date;
+  //       const checkToDate = bookingData.to_date || currentBooking.to_date;
 
-//       // Skip duplicate check if customer is being removed (null)
-//       if (checkCustomerId) {
-//         const duplicateBooking = await Booking.checkDuplicateBooking(
-//           hotelId,
-//           checkRoomId,
-//           checkCustomerId,
-//           checkFromDate,
-//           checkToDate,
-//           id // Exclude current booking
-//         );
+  //       // Skip duplicate check if customer is being removed (null)
+  //       if (checkCustomerId) {
+  //         const duplicateBooking = await Booking.checkDuplicateBooking(
+  //           hotelId,
+  //           checkRoomId,
+  //           checkCustomerId,
+  //           checkFromDate,
+  //           checkToDate,
+  //           id // Exclude current booking
+  //         );
 
-//         if (duplicateBooking) {
-//           return res.status(400).json({
-//             success: false,
-//             error: 'DUPLICATE_BOOKING',
-//             message: 'Another booking already exists for this customer in the same room and dates',
-//             data: {
-//               existing_booking_id: duplicateBooking.id,
-//               customer_name: duplicateBooking.customer_name,
-//               room_number: duplicateBooking.room_number,
-//               from_date: duplicateBooking.from_date,
-//               to_date: duplicateBooking.to_date,
-//               status: duplicateBooking.status
-//             }
-//           });
-//         }
-//       }
-//     }
+  //         if (duplicateBooking) {
+  //           return res.status(400).json({
+  //             success: false,
+  //             error: 'DUPLICATE_BOOKING',
+  //             message: 'Another booking already exists for this customer in the same room and dates',
+  //             data: {
+  //               existing_booking_id: duplicateBooking.id,
+  //               customer_name: duplicateBooking.customer_name,
+  //               room_number: duplicateBooking.room_number,
+  //               from_date: duplicateBooking.from_date,
+  //               to_date: duplicateBooking.to_date,
+  //               status: duplicateBooking.status
+  //             }
+  //           });
+  //         }
+  //       }
+  //     }
 
-//     // Check room availability if dates or room is changing
-//     if ((bookingData.from_date || bookingData.to_date || bookingData.room_id) &&
-//         bookingData.status !== 'available') {
+  //     // Check room availability if dates or room is changing
+  //     if ((bookingData.from_date || bookingData.to_date || bookingData.room_id) &&
+  //         bookingData.status !== 'available') {
 
-//       const checkRoomId = bookingData.room_id || currentBooking.room_id;
-//       const checkFromDate = bookingData.from_date || currentBooking.from_date;
-//       const checkToDate = bookingData.to_date || currentBooking.to_date;
-//       const checkStatus = bookingData.status || currentBooking.status;
+  //       const checkRoomId = bookingData.room_id || currentBooking.room_id;
+  //       const checkFromDate = bookingData.from_date || currentBooking.from_date;
+  //       const checkToDate = bookingData.to_date || currentBooking.to_date;
+  //       const checkStatus = bookingData.status || currentBooking.status;
 
-//       const isAvailable = await Booking.checkRoomAvailability(
-//         checkRoomId,
-//         hotelId,
-//         checkFromDate,
-//         checkToDate,
-//         id, // Exclude current booking
-//         checkStatus
-//       );
+  //       const isAvailable = await Booking.checkRoomAvailability(
+  //         checkRoomId,
+  //         hotelId,
+  //         checkFromDate,
+  //         checkToDate,
+  //         id, // Exclude current booking
+  //         checkStatus
+  //       );
 
-//       if (!isAvailable) {
-//         return res.status(400).json({
-//           success: false,
-//           error: 'ROOM_NOT_AVAILABLE',
-//           message: 'Room is not available for the selected dates'
-//         });
-//       }
-//     }
+  //       if (!isAvailable) {
+  //         return res.status(400).json({
+  //           success: false,
+  //           error: 'ROOM_NOT_AVAILABLE',
+  //           message: 'Room is not available for the selected dates'
+  //         });
+  //       }
+  //     }
 
-//     // Update booking
-//     const updated = await Booking.update(id, hotelId, bookingData);
-//     if (!updated) {
-//       return res.status(404).json({
-//         success: false,
-//         error: 'BOOKING_NOT_FOUND',
-//         message: 'Booking not found or not updated'
-//       });
-//     }
+  //     // Update booking
+  //     const updated = await Booking.update(id, hotelId, bookingData);
+  //     if (!updated) {
+  //       return res.status(404).json({
+  //         success: false,
+  //         error: 'BOOKING_NOT_FOUND',
+  //         message: 'Booking not found or not updated'
+  //       });
+  //     }
 
-//     // ✅ Additional safety: Update room status if booking is completed or cancelled
-//     // This ensures the room status is updated even if the model method fails
-//     if (bookingData.status === 'completed' || bookingData.status === 'cancelled') {
-//       const roomId = bookingData.room_id || currentBooking.room_id;
-//       if (roomId) {
-//         const Room = require('../models/Room');
-//         await Room.updateStatus(roomId, hotelId, 'available');
-//         console.log(`✅ Room ${roomId} set to available (booking ${bookingData.status})`);
-//       }
-//     }
-//     // If booking is reactivated from completed to booked
-//     else if (bookingData.status === 'booked' && currentBooking.status !== 'booked') {
-//       const roomId = bookingData.room_id || currentBooking.room_id;
-//       if (roomId) {
-//         const Room = require('../models/Room');
-//         await Room.updateStatus(roomId, hotelId, 'booked');
-//         console.log(`✅ Room ${roomId} set to booked`);
-//       }
-//     }
+  //     // ✅ Additional safety: Update room status if booking is completed or cancelled
+  //     // This ensures the room status is updated even if the model method fails
+  //     if (bookingData.status === 'completed' || bookingData.status === 'cancelled') {
+  //       const roomId = bookingData.room_id || currentBooking.room_id;
+  //       if (roomId) {
+  //         const Room = require('../models/Room');
+  //         await Room.updateStatus(roomId, hotelId, 'available');
+  //         console.log(`✅ Room ${roomId} set to available (booking ${bookingData.status})`);
+  //       }
+  //     }
+  //     // If booking is reactivated from completed to booked
+  //     else if (bookingData.status === 'booked' && currentBooking.status !== 'booked') {
+  //       const roomId = bookingData.room_id || currentBooking.room_id;
+  //       if (roomId) {
+  //         const Room = require('../models/Room');
+  //         await Room.updateStatus(roomId, hotelId, 'booked');
+  //         console.log(`✅ Room ${roomId} set to booked`);
+  //       }
+  //     }
 
-//     res.json({
-//       success: true,
-//       message: 'Booking updated successfully'
-//     });
+  //     res.json({
+  //       success: true,
+  //       message: 'Booking updated successfully'
+  //     });
 
-//   } catch (error) {
-//     console.error('Update booking error:', error);
-//     res.status(500).json({
-//       success: false,
-//       error: 'SERVER_ERROR',
-//       message: 'Internal server error'
-//     });
-//   }
-// },
+  //   } catch (error) {
+  //     console.error('Update booking error:', error);
+  //     res.status(500).json({
+  //       success: false,
+  //       error: 'SERVER_ERROR',
+  //       message: 'Internal server error'
+  //     });
+  //   }
+  // },
 
-// Update booking
-updateBooking: async (req, res) => {
-  try {
-    const { id } = req.params;
-    const hotelId = req.user.hotel_id;
-    const bookingData = req.body;
+  // Update booking
+  updateBooking: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const hotelId = req.user.hotel_id;
+      const bookingData = req.body;
 
-    console.log('='.repeat(50));
-    console.log('📝 UPDATE BOOKING REQUEST RECEIVED');
-    console.log('='.repeat(50));
-    console.log('Booking ID:', id);
-    console.log('Hotel ID:', hotelId);
-    console.log('Request Body:', JSON.stringify(bookingData, null, 2));
+      console.log('='.repeat(50));
+      console.log('📝 UPDATE BOOKING REQUEST RECEIVED');
+      console.log('='.repeat(50));
+      console.log('Booking ID:', id);
+      console.log('Hotel ID:', hotelId);
+      console.log('Request Body:', JSON.stringify(bookingData, null, 2));
 
-    // Get current booking details
-    const currentBooking = await Booking.findById(id, hotelId);
-    if (!currentBooking) {
-      console.log('❌ Booking not found');
-      return res.status(404).json({
-        success: false,
-        error: 'BOOKING_NOT_FOUND',
-        message: 'Booking not found'
+      // Get current booking details
+      const currentBooking = await Booking.findById(id, hotelId);
+      if (!currentBooking) {
+        console.log('❌ Booking not found');
+        return res.status(404).json({
+          success: false,
+          error: 'BOOKING_NOT_FOUND',
+          message: 'Booking not found'
+        });
+      }
+
+      console.log('📋 Current Booking Details:', {
+        id: currentBooking.id,
+        room_id: currentBooking.room_id,
+        from_date: currentBooking.from_date,
+        to_date: currentBooking.to_date,
+        status: currentBooking.status
       });
-    }
 
-    console.log('📋 Current Booking Details:', {
-      id: currentBooking.id,
-      room_id: currentBooking.room_id,
-      from_date: currentBooking.from_date,
-      to_date: currentBooking.to_date,
-      status: currentBooking.status
-    });
-
-    // ===========================================
-    // CHECK FOR DUPLICATE WHEN UPDATING
-    // ===========================================
-    if ((bookingData.room_id || currentBooking.room_id) &&
+      // ===========================================
+      // CHECK FOR DUPLICATE WHEN UPDATING
+      // ===========================================
+      if ((bookingData.room_id || currentBooking.room_id) &&
         (bookingData.customer_id || currentBooking.customer_id) &&
         (bookingData.from_date || currentBooking.from_date) &&
         (bookingData.to_date || currentBooking.to_date)) {
 
-      const checkRoomId = bookingData.room_id || currentBooking.room_id;
-      const checkCustomerId = bookingData.customer_id || currentBooking.customer_id;
-      const checkFromDate = bookingData.from_date || currentBooking.from_date;
-      const checkToDate = bookingData.to_date || currentBooking.to_date;
+        const checkRoomId = bookingData.room_id || currentBooking.room_id;
+        const checkCustomerId = bookingData.customer_id || currentBooking.customer_id;
+        const checkFromDate = bookingData.from_date || currentBooking.from_date;
+        const checkToDate = bookingData.to_date || currentBooking.to_date;
 
-      console.log('🔍 Checking for duplicate booking:', {
-        checkRoomId,
-        checkCustomerId,
-        checkFromDate,
-        checkToDate,
-        excludeBookingId: id
-      });
-
-      // Skip duplicate check if customer is being removed (null)
-      if (checkCustomerId) {
-        const duplicateBooking = await Booking.checkDuplicateBooking(
-          hotelId,
+        console.log('🔍 Checking for duplicate booking:', {
           checkRoomId,
           checkCustomerId,
           checkFromDate,
           checkToDate,
-          id // Exclude current booking
-        );
+          excludeBookingId: id
+        });
 
-        console.log('📊 Duplicate check result:', duplicateBooking ? 'DUPLICATE FOUND' : 'No duplicate');
+        // Skip duplicate check if customer is being removed (null)
+        if (checkCustomerId) {
+          const duplicateBooking = await Booking.checkDuplicateBooking(
+            hotelId,
+            checkRoomId,
+            checkCustomerId,
+            checkFromDate,
+            checkToDate,
+            id // Exclude current booking
+          );
 
-        if (duplicateBooking) {
-          console.log('❌ Duplicate booking found:', duplicateBooking);
-          return res.status(400).json({
-            success: false,
-            error: 'DUPLICATE_BOOKING',
-            message: 'Another booking already exists for this customer in the same room and dates',
-            data: {
-              existing_booking_id: duplicateBooking.id,
-              customer_name: duplicateBooking.customer_name,
-              room_number: duplicateBooking.room_number,
-              from_date: duplicateBooking.from_date,
-              to_date: duplicateBooking.to_date,
-              status: duplicateBooking.status
-            }
-          });
+          console.log('📊 Duplicate check result:', duplicateBooking ? 'DUPLICATE FOUND' : 'No duplicate');
+
+          if (duplicateBooking) {
+            console.log('❌ Duplicate booking found:', duplicateBooking);
+            return res.status(400).json({
+              success: false,
+              error: 'DUPLICATE_BOOKING',
+              message: 'Another booking already exists for this customer in the same room and dates',
+              data: {
+                existing_booking_id: duplicateBooking.id,
+                customer_name: duplicateBooking.customer_name,
+                room_number: duplicateBooking.room_number,
+                from_date: duplicateBooking.from_date,
+                to_date: duplicateBooking.to_date,
+                status: duplicateBooking.status
+              }
+            });
+          }
         }
       }
-    }
 
-    // ===========================================
-    // CRITICAL: CHECK ROOM AVAILABILITY
-    // ===========================================
-    // If dates or room is changing, check if the room is available
-    if ((bookingData.from_date || bookingData.to_date || bookingData.room_id)) {
-      
-      const checkRoomId = bookingData.room_id || currentBooking.room_id;
-      const checkFromDate = bookingData.from_date || currentBooking.from_date;
-      const checkToDate = bookingData.to_date || currentBooking.to_date;
-      
-      // Get the new status (if being updated, otherwise keep current)
-      const checkStatus = bookingData.status || currentBooking.status;
+      // ===========================================
+      // CRITICAL: CHECK ROOM AVAILABILITY
+      // ===========================================
+      // If dates or room is changing, check if the room is available
+      if ((bookingData.from_date || bookingData.to_date || bookingData.room_id)) {
 
-      console.log('🔍 CHECKING ROOM AVAILABILITY:', {
-        roomId: checkRoomId,
-        fromDate: checkFromDate,
-        toDate: checkToDate,
-        currentStatus: checkStatus,
-        excludeBookingId: id
-      });
+        const checkRoomId = bookingData.room_id || currentBooking.room_id;
+        const checkFromDate = bookingData.from_date || currentBooking.from_date;
+        const checkToDate = bookingData.to_date || currentBooking.to_date;
 
-      // Check if room is available for these dates
-      const isAvailable = await Booking.checkRoomAvailability(
-        checkRoomId,
-        hotelId,
-        checkFromDate,
-        checkToDate,
-        id, // Exclude current booking
-        checkStatus
-      );
+        // Get the new status (if being updated, otherwise keep current)
+        const checkStatus = bookingData.status || currentBooking.status;
 
-      console.log('✅ AVAILABILITY CHECK RESULT:', isAvailable ? 'AVAILABLE ✅' : 'NOT AVAILABLE ❌');
-
-      if (!isAvailable) {
-        console.log('❌ ROOM NOT AVAILABLE - Blocking update');
-        return res.status(400).json({
-          success: false,
-          error: 'ROOM_NOT_AVAILABLE',
-          message: 'Room is already booked or blocked for the selected dates'
+        console.log('🔍 CHECKING ROOM AVAILABILITY:', {
+          roomId: checkRoomId,
+          fromDate: checkFromDate,
+          toDate: checkToDate,
+          currentStatus: checkStatus,
+          excludeBookingId: id
         });
-      } else {
-        console.log('✅ ROOM IS AVAILABLE - Proceeding with update');
-      }
-    }
 
-    // Update booking
-    console.log('📝 Attempting to update booking with data:', bookingData);
-    const updated = await Booking.update(id, hotelId, bookingData);
-    
-    console.log('📊 Update result:', updated ? 'SUCCESS ✅' : 'FAILED ❌');
-    
-    if (!updated) {
-      return res.status(404).json({
+        // Check if room is available for these dates
+        const isAvailable = await Booking.checkRoomAvailability(
+          checkRoomId,
+          hotelId,
+          checkFromDate,
+          checkToDate,
+          id, // Exclude current booking
+          checkStatus
+        );
+
+        console.log('✅ AVAILABILITY CHECK RESULT:', isAvailable ? 'AVAILABLE ✅' : 'NOT AVAILABLE ❌');
+
+        if (!isAvailable) {
+          console.log('❌ ROOM NOT AVAILABLE - Blocking update');
+          return res.status(400).json({
+            success: false,
+            error: 'ROOM_NOT_AVAILABLE',
+            message: 'Room is already booked or blocked for the selected dates'
+          });
+        } else {
+          console.log('✅ ROOM IS AVAILABLE - Proceeding with update');
+        }
+      }
+
+      // Update booking
+      console.log('📝 Attempting to update booking with data:', bookingData);
+      const updated = await Booking.update(id, hotelId, bookingData);
+
+      console.log('📊 Update result:', updated ? 'SUCCESS ✅' : 'FAILED ❌');
+
+      if (!updated) {
+        return res.status(404).json({
+          success: false,
+          error: 'BOOKING_NOT_FOUND',
+          message: 'Booking not found or not updated'
+        });
+      }
+
+      // Update room status if needed
+      if (bookingData.status === 'completed' || bookingData.status === 'cancelled') {
+        const roomId = bookingData.room_id || currentBooking.room_id;
+        if (roomId) {
+          const Room = require('../models/Room');
+          await Room.updateStatus(roomId, hotelId, 'available');
+          console.log(`✅ Room ${roomId} set to available`);
+        }
+      } else if (bookingData.status === 'booked' && currentBooking.status !== 'booked') {
+        const roomId = bookingData.room_id || currentBooking.room_id;
+        if (roomId) {
+          const Room = require('../models/Room');
+          await Room.updateStatus(roomId, hotelId, 'booked');
+          console.log(`✅ Room ${roomId} set to booked`);
+        }
+      }
+
+      console.log('✅ Booking updated successfully');
+      console.log('='.repeat(50));
+
+      res.json({
+        success: true,
+        message: 'Booking updated successfully'
+      });
+
+    } catch (error) {
+      console.error('❌ UPDATE BOOKING ERROR:', error);
+      res.status(500).json({
         success: false,
-        error: 'BOOKING_NOT_FOUND',
-        message: 'Booking not found or not updated'
+        error: 'SERVER_ERROR',
+        message: 'Internal server error: ' + error.message
       });
     }
-
-    // Update room status if needed
-    if (bookingData.status === 'completed' || bookingData.status === 'cancelled') {
-      const roomId = bookingData.room_id || currentBooking.room_id;
-      if (roomId) {
-        const Room = require('../models/Room');
-        await Room.updateStatus(roomId, hotelId, 'available');
-        console.log(`✅ Room ${roomId} set to available`);
-      }
-    } else if (bookingData.status === 'booked' && currentBooking.status !== 'booked') {
-      const roomId = bookingData.room_id || currentBooking.room_id;
-      if (roomId) {
-        const Room = require('../models/Room');
-        await Room.updateStatus(roomId, hotelId, 'booked');
-        console.log(`✅ Room ${roomId} set to booked`);
-      }
-    }
-
-    console.log('✅ Booking updated successfully');
-    console.log('='.repeat(50));
-
-    res.json({
-      success: true,
-      message: 'Booking updated successfully'
-    });
-
-  } catch (error) {
-    console.error('❌ UPDATE BOOKING ERROR:', error);
-    res.status(500).json({
-      success: false,
-      error: 'SERVER_ERROR',
-      message: 'Internal server error: ' + error.message
-    });
-  }
-},
+  },
   // Update booking payment status
   updateBookingPayment: async (req, res) => {
     try {
@@ -3336,6 +3380,316 @@ updateBooking: async (req, res) => {
   },
 
   // Add this method to bookingController.js
+  // createPastBooking: async (req, res) => {
+  //   try {
+  //     const {
+  //       room_id,
+  //       customer_id,
+  //       from_date,
+  //       to_date,
+  //       from_time = '14:00',
+  //       to_time = '12:00',
+  //       amount,
+  //       service,
+  //       gst,
+  //       total,
+  //       status = 'booked',
+  //       guests = 1,
+  //       special_requests = '',
+  //       id_type = 'aadhaar',
+  //       payment_method = 'cash',
+  //       payment_status = 'completed',
+  //       transaction_id,
+  //       customer_name,
+  //       customer_phone,
+  //       customer_email,
+  //       customer_id_number,
+  //       id_image,
+  //       id_image2,
+  //       address,
+  //       city,
+  //       state,
+  //       pincode,
+  //       customer_gst_no,
+  //       purpose_of_visit,
+  //       other_expenses = 0,
+  //       expense_description = '',
+  //       referral_by,
+  //       referral_amount = 0,
+  //       invoice_number,
+  //       booking_date, // Optional: actual booking date (when booking was made)
+  //       check_in_date, // Actual check-in date (could be in past)
+  //       check_out_date // Actual check-out date (could be in past)
+  //     } = req.body;
+
+  //     const hotelId = req.user.hotel_id;
+  //     let finalCustomerId = customer_id;
+  //     let isNewCustomer = false;
+
+  //     console.log('📝 Create past booking request:', {
+  //       hotelId,
+  //       room_id,
+  //       from_date: from_date || check_in_date,
+  //       to_date: to_date || check_out_date,
+  //       customer_name,
+  //       customer_phone,
+  //       booking_date,
+  //       actual_booking_date: booking_date
+  //     });
+
+  //     // ===========================================
+  //     // 1. VALIDATE ROOM
+  //     // ===========================================
+  //     const room = await Room.findById(room_id, hotelId);
+  //     if (!room) {
+  //       return res.status(404).json({
+  //         success: false,
+  //         error: 'ROOM_NOT_FOUND',
+  //         message: 'Room not found'
+  //       });
+  //     }
+
+  //     // ===========================================
+  //     // 2. CUSTOMER HANDLING
+  //     // ===========================================
+  //     if (customer_name && customer_phone) {
+  //       try {
+  //         // Check if customer already exists with same phone
+  //         const existingCustomer = await Customer.findByPhone(customer_phone, hotelId);
+
+  //         if (existingCustomer) {
+  //           finalCustomerId = existingCustomer.id;
+  //           console.log('✅ Found existing customer:', {
+  //             customerId: finalCustomerId,
+  //             name: existingCustomer.name
+  //           });
+
+  //           // Update existing customer if needed
+  //           if (customer_email || address) {
+  //             await Customer.update(existingCustomer.id, hotelId, {
+  //               name: customer_name,
+  //               phone: customer_phone,
+  //               email: customer_email || existingCustomer.email,
+  //               id_number: customer_id_number || existingCustomer.id_number,
+  //               id_type: id_type || 'aadhaar',
+  //               id_image: id_image || existingCustomer.id_image,
+  //               id_image2: id_image2 || existingCustomer.id_image2,
+  //               address: address || existingCustomer.address,
+  //               city: city || existingCustomer.city,
+  //               state: state || existingCustomer.state,
+  //               pincode: pincode || existingCustomer.pincode,
+  //               customer_gst_no: customer_gst_no || existingCustomer.customer_gst_no,
+  //               purpose_of_visit: purpose_of_visit || existingCustomer.purpose_of_visit,
+  //               other_expenses: other_expenses || existingCustomer.other_expenses || 0,
+  //               expense_description: expense_description || existingCustomer.expense_description
+  //             });
+  //           }
+  //         } else {
+  //           // Create new customer
+  //           finalCustomerId = await Customer.create({
+  //             hotel_id: hotelId,
+  //             name: customer_name,
+  //             phone: customer_phone,
+  //             email: customer_email || '',
+  //             id_number: customer_id_number || '',
+  //             id_type: id_type || 'aadhaar',
+  //             id_image: id_image || null,
+  //             id_image2: id_image2 || null,
+  //             payment_method: payment_method || 'cash',
+  //             payment_status: payment_status || 'completed',
+  //             transaction_id: transaction_id || null,
+  //             address: address || '',
+  //             city: city || '',
+  //             state: state || '',
+  //             pincode: pincode || '',
+  //             customer_gst_no: customer_gst_no,
+  //             purpose_of_visit: purpose_of_visit || null,
+  //             other_expenses: other_expenses || 0,
+  //             expense_description: expense_description || null
+  //           });
+  //           isNewCustomer = true;
+  //           console.log('✅ Created new customer:', { customerId: finalCustomerId });
+  //         }
+  //       } catch (customerError) {
+  //         console.error('❌ Customer creation error:', customerError);
+  //         return res.status(500).json({
+  //           success: false,
+  //           error: 'CUSTOMER_CREATION_FAILED',
+  //           message: 'Failed to create/update customer'
+  //         });
+  //       }
+  //     }
+
+  //     // ===========================================
+  //     // 3. CHECK IF DATES ARE VALID (ALLOW PAST DATES)
+  //     // ===========================================
+  //     const actualFromDate = from_date || check_in_date;
+  //     const actualToDate = to_date || check_out_date;
+  //     const actualBookingDate = booking_date || new Date().toISOString().split('T')[0];
+
+  //     if (!actualFromDate || !actualToDate) {
+  //       return res.status(400).json({
+  //         success: false,
+  //         error: 'DATES_REQUIRED',
+  //         message: 'Check-in and check-out dates are required'
+  //       });
+  //     }
+
+  //     // Parse dates
+  //     const fromDate = new Date(actualFromDate);
+  //     const toDate = new Date(actualToDate);
+  //     const bookingDate = new Date(actualBookingDate);
+
+  //     // Validate date order (to should be after from)
+  //     if (toDate <= fromDate) {
+  //       return res.status(400).json({
+  //         success: false,
+  //         error: 'INVALID_DATE_RANGE',
+  //         message: 'Check-out date must be after check-in date'
+  //       });
+  //     }
+
+  //     // Allow past dates - don't validate against current date
+  //     console.log('📅 Date validation passed (past dates allowed):', {
+  //       fromDate: fromDate.toISOString(),
+  //       toDate: toDate.toISOString(),
+  //       bookingDate: bookingDate.toISOString(),
+  //       isPastDate: fromDate < new Date()
+  //     });
+
+  //     // ===========================================
+  //     // 4. CHECK ROOM AVAILABILITY (Skip for past bookings)
+  //     // ===========================================
+  //     // For past bookings, we skip availability check since it's historical data
+  //     // But we can still check for logical conflicts if needed
+  //     const today = new Date();
+  //     if (fromDate >= today) {
+  //       // Only check availability for future dates
+  //       const isAvailable = await Booking.checkRoomAvailability(room_id, hotelId, actualFromDate, actualToDate, null, status);
+  //       if (!isAvailable) {
+  //         return res.status(400).json({
+  //           success: false,
+  //           error: 'ROOM_NOT_AVAILABLE',
+  //           message: 'Room is not available for the selected dates'
+  //         });
+  //       }
+  //     } else {
+  //       console.log('⚠️ Past date booking - skipping availability check');
+  //     }
+
+  //     // ===========================================
+  //     // 5. CREATE BOOKING WITH PAST DATES
+  //     // ===========================================
+  //     let finalInvoiceNumber = invoice_number;
+  //     if (!finalInvoiceNumber) {
+  //       finalInvoiceNumber = await Booking.getNextInvoiceNumber(hotelId);
+  //     }
+
+  //     const otherExpenses = parseFloat(other_expenses) || 0;
+  //     const calculatedTotal = parseFloat(amount || 0) +
+  //       parseFloat(service || 0) +
+  //       parseFloat(gst || 0) +
+  //       otherExpenses;
+
+  //     const finalTotal = parseFloat(total || calculatedTotal);
+
+  //     const bookingData = {
+  //       hotel_id: hotelId,
+  //       room_id,
+  //       customer_id: status === 'booked' ? finalCustomerId : null,
+  //       from_date: actualFromDate,
+  //       to_date: actualToDate,
+  //       from_time: from_time,
+  //       to_time: to_time,
+  //       amount: parseFloat(amount || 0),
+  //       service: parseFloat(service || 0),
+  //       gst: parseFloat(gst || 0),
+  //       total: finalTotal,
+  //       invoice_number: finalInvoiceNumber,
+  //       status: status,
+  //       guests: parseInt(guests || 1),
+  //       special_requests: special_requests || '',
+  //       id_type: id_type || 'aadhaar',
+  //       payment_method: payment_method || 'cash',
+  //       payment_status: payment_status || 'completed',
+  //       transaction_id: transaction_id || null,
+  //       referral_by: referral_by || '',
+  //       referral_amount: parseFloat(referral_amount || 0),
+  //       // Add booking metadata for past bookings
+  //       booking_date: actualBookingDate, // When booking was actually made
+  //       is_past_booking: fromDate < new Date() ? 1 : 0,
+  //       created_at: bookingDate.toISOString().split('T')[0] + ' ' + new Date().toTimeString().split(' ')[0]
+  //     };
+
+  //     console.log('📅 Creating past booking:', bookingData);
+
+  //     let bookingId;
+  //     if (status === 'booked' && finalCustomerId) {
+  //       bookingId = await Booking.create(bookingData);
+  //     } else {
+  //       bookingId = await Booking.createWithoutCustomer(bookingData);
+  //     }
+
+  //     console.log('✅ Past booking created successfully:', { bookingId });
+
+  //     // ===========================================
+  //     // 6. UPDATE ROOM STATUS (Only if dates are current/future)
+  //     // ===========================================
+  //     if (status === 'booked' && fromDate >= today) {
+  //       await Room.updateStatus(room_id, hotelId, 'booked');
+  //       console.log('✅ Room status updated to booked');
+  //     }
+
+  //     // ===========================================
+  //     // 7. CREATE COLLECTION FOR PAST BOOKING
+  //     // ===========================================
+  //     if (payment_method === 'cash' && status === 'booked') {
+  //       try {
+  //         await Collection.createFromCashBooking(bookingId, hotelId, req.user.userId);
+  //         console.log('✅ Auto-created collection for past cash booking');
+  //       } catch (collectionError) {
+  //         console.error('❌ Failed to auto-create collection:', collectionError);
+  //       }
+  //     }
+
+  //     // ===========================================
+  //     // 8. RESPONSE
+  //     // ===========================================
+  //     const responseData = {
+  //       bookingId: bookingId,
+  //       customerId: finalCustomerId,
+  //       isNewCustomer: isNewCustomer,
+  //       isPastBooking: fromDate < new Date(),
+  //       bookingDetails: {
+  //         room_id: room_id,
+  //         room_number: room.room_number,
+  //         from_date: actualFromDate,
+  //         to_date: actualToDate,
+  //         booking_date: actualBookingDate,
+  //         status: status,
+  //         total: finalTotal,
+  //         payment_method: payment_method,
+  //         payment_status: payment_status,
+  //         invoice_number: finalInvoiceNumber
+  //       }
+  //     };
+
+  //     res.status(201).json({
+  //       success: true,
+  //       message: isNewCustomer ? 'New customer and past booking created successfully' : 'Past booking created successfully',
+  //       data: responseData
+  //     });
+
+  //   } catch (error) {
+  //     console.error('❌ Create past booking error:', error);
+  //     res.status(500).json({
+  //       success: false,
+  //       error: 'SERVER_ERROR',
+  //       message: 'Internal server error: ' + error.message
+  //     });
+  //   }
+  // },
+
   createPastBooking: async (req, res) => {
     try {
       const {
@@ -3348,6 +3702,9 @@ updateBooking: async (req, res) => {
         amount,
         service,
         gst,
+        cgst,        // ← ADD THIS
+        sgst,        // ← ADD THIS
+        igst,        // ← ADD THIS
         total,
         status = 'booked',
         guests = 1,
@@ -3373,9 +3730,9 @@ updateBooking: async (req, res) => {
         referral_by,
         referral_amount = 0,
         invoice_number,
-        booking_date, // Optional: actual booking date (when booking was made)
-        check_in_date, // Actual check-in date (could be in past)
-        check_out_date // Actual check-out date (could be in past)
+        booking_date,
+        check_in_date,
+        check_out_date
       } = req.body;
 
       const hotelId = req.user.hotel_id;
@@ -3389,8 +3746,8 @@ updateBooking: async (req, res) => {
         to_date: to_date || check_out_date,
         customer_name,
         customer_phone,
-        booking_date,
-        actual_booking_date: booking_date
+        // Log the tax fields being received
+        taxFields: { cgst, sgst, igst, gst }
       });
 
       // ===========================================
@@ -3410,7 +3767,6 @@ updateBooking: async (req, res) => {
       // ===========================================
       if (customer_name && customer_phone) {
         try {
-          // Check if customer already exists with same phone
           const existingCustomer = await Customer.findByPhone(customer_phone, hotelId);
 
           if (existingCustomer) {
@@ -3420,7 +3776,6 @@ updateBooking: async (req, res) => {
               name: existingCustomer.name
             });
 
-            // Update existing customer if needed
             if (customer_email || address) {
               await Customer.update(existingCustomer.id, hotelId, {
                 name: customer_name,
@@ -3441,7 +3796,6 @@ updateBooking: async (req, res) => {
               });
             }
           } else {
-            // Create new customer
             finalCustomerId = await Customer.create({
               hotel_id: hotelId,
               name: customer_name,
@@ -3491,12 +3845,10 @@ updateBooking: async (req, res) => {
         });
       }
 
-      // Parse dates
       const fromDate = new Date(actualFromDate);
       const toDate = new Date(actualToDate);
       const bookingDate = new Date(actualBookingDate);
 
-      // Validate date order (to should be after from)
       if (toDate <= fromDate) {
         return res.status(400).json({
           success: false,
@@ -3505,7 +3857,6 @@ updateBooking: async (req, res) => {
         });
       }
 
-      // Allow past dates - don't validate against current date
       console.log('📅 Date validation passed (past dates allowed):', {
         fromDate: fromDate.toISOString(),
         toDate: toDate.toISOString(),
@@ -3516,11 +3867,8 @@ updateBooking: async (req, res) => {
       // ===========================================
       // 4. CHECK ROOM AVAILABILITY (Skip for past bookings)
       // ===========================================
-      // For past bookings, we skip availability check since it's historical data
-      // But we can still check for logical conflicts if needed
       const today = new Date();
       if (fromDate >= today) {
-        // Only check availability for future dates
         const isAvailable = await Booking.checkRoomAvailability(room_id, hotelId, actualFromDate, actualToDate, null, status);
         if (!isAvailable) {
           return res.status(400).json({
@@ -3541,11 +3889,16 @@ updateBooking: async (req, res) => {
         finalInvoiceNumber = await Booking.getNextInvoiceNumber(hotelId);
       }
 
-      const otherExpenses = parseFloat(other_expenses) || 0;
+      const otherExpensesValue = parseFloat(other_expenses) || 0;
+
+      // Calculate total including split taxes
       const calculatedTotal = parseFloat(amount || 0) +
         parseFloat(service || 0) +
         parseFloat(gst || 0) +
-        otherExpenses;
+        parseFloat(cgst || 0) +    // ← ADD THIS
+        parseFloat(sgst || 0) +    // ← ADD THIS
+        parseFloat(igst || 0) +    // ← ADD THIS
+        otherExpensesValue;
 
       const finalTotal = parseFloat(total || calculatedTotal);
 
@@ -3560,6 +3913,9 @@ updateBooking: async (req, res) => {
         amount: parseFloat(amount || 0),
         service: parseFloat(service || 0),
         gst: parseFloat(gst || 0),
+        cgst: parseFloat(cgst || 0),    // ← ADD THIS
+        sgst: parseFloat(sgst || 0),    // ← ADD THIS
+        igst: parseFloat(igst || 0),    // ← ADD THIS
         total: finalTotal,
         invoice_number: finalInvoiceNumber,
         status: status,
@@ -3571,13 +3927,20 @@ updateBooking: async (req, res) => {
         transaction_id: transaction_id || null,
         referral_by: referral_by || '',
         referral_amount: parseFloat(referral_amount || 0),
-        // Add booking metadata for past bookings
-        booking_date: actualBookingDate, // When booking was actually made
+        booking_date: actualBookingDate,
         is_past_booking: fromDate < new Date() ? 1 : 0,
         created_at: bookingDate.toISOString().split('T')[0] + ' ' + new Date().toTimeString().split(' ')[0]
       };
 
-      console.log('📅 Creating past booking:', bookingData);
+      console.log('📅 Creating past booking with tax details:', {
+        amount: bookingData.amount,
+        service: bookingData.service,
+        cgst: bookingData.cgst,
+        sgst: bookingData.sgst,
+        igst: bookingData.igst,
+        gst: bookingData.gst,
+        total: bookingData.total
+      });
 
       let bookingId;
       if (status === 'booked' && finalCustomerId) {
@@ -3626,7 +3989,14 @@ updateBooking: async (req, res) => {
           total: finalTotal,
           payment_method: payment_method,
           payment_status: payment_status,
-          invoice_number: finalInvoiceNumber
+          invoice_number: finalInvoiceNumber,
+          // Include tax breakdown in response
+          tax_breakdown: {
+            cgst: parseFloat(cgst || 0),
+            sgst: parseFloat(sgst || 0),
+            igst: parseFloat(igst || 0),
+            gst: parseFloat(gst || 0)
+          }
         }
       };
 
@@ -3648,6 +4018,114 @@ updateBooking: async (req, res) => {
   // Add these methods to bookingController.js
 
   // Block room
+  // blockRoom: async (req, res) => {
+  //   try {
+  //     const {
+  //       roomId,
+  //       roomNumber,
+  //       fromDate,
+  //       toDate,
+  //       reason,
+  //       blockedBy
+  //     } = req.body;
+
+  //     const hotelId = req.user.hotel_id;
+
+  //     console.log('🚫 Block room request:', {
+  //       hotelId,
+  //       roomId,
+  //       roomNumber,
+  //       fromDate,
+  //       toDate,
+  //       reason,
+  //       blockedBy
+  //     });
+
+  //     // Find room by ID or number
+  //     let room;
+  //     if (roomId) {
+  //       room = await Room.findById(roomId, hotelId);
+  //     } else if (roomNumber) {
+  //       room = await Room.findByNumber(roomNumber, hotelId);
+  //     }
+
+  //     if (!room) {
+  //       return res.status(404).json({
+  //         success: false,
+  //         error: 'ROOM_NOT_FOUND',
+  //         message: 'Room not found'
+  //       });
+  //     }
+
+  //     // Check if room is already booked for these dates
+  //     const isAvailable = await Booking.checkRoomAvailability(
+  //       room.id,
+  //       hotelId,
+  //       fromDate,
+  //       toDate,
+  //       null,
+  //       'blocked'
+  //     );
+
+  //     if (!isAvailable) {
+  //       return res.status(400).json({
+  //         success: false,
+  //         error: 'ROOM_NOT_AVAILABLE',
+  //         message: 'Room is already booked or blocked for selected dates'
+  //       });
+  //     }
+
+  //     // Create a booking record with status 'blocked' (no customer)
+  //     const bookingData = {
+  //       hotel_id: hotelId,
+  //       room_id: room.id,
+  //       from_date: fromDate,
+  //       to_date: toDate,
+  //       from_time: '00:00',
+  //       to_time: '23:59',
+  //       amount: 0,
+  //       service: 0,
+  //       gst: 0,
+  //       total: 0,
+  //       status: 'blocked',
+  //       guests: 0,
+  //       special_requests: reason || 'Room blocked',
+  //       payment_method: 'none',
+  //       payment_status: 'none',
+  //       referral_by: blockedBy || 'Admin'
+  //     };
+
+  //     const bookingId = await Booking.createSpecialBooking(bookingData, 'block');
+  //     console.log('✅ Room blocked successfully:', { bookingId });
+
+  //     // Update room status to blocked
+  //     await Room.updateStatus(room.id, hotelId, 'blocked');
+
+  //     res.status(201).json({
+  //       success: true,
+  //       message: `Room ${room.room_number} blocked successfully`,
+  //       data: {
+  //         bookingId,
+  //         roomId: room.id,
+  //         roomNumber: room.room_number,
+  //         fromDate,
+  //         toDate,
+  //         reason,
+  //         blockedBy
+  //       }
+  //     });
+
+  //   } catch (error) {
+  //     console.error('❌ Block room error:', error);
+  //     res.status(500).json({
+  //       success: false,
+  //       error: 'SERVER_ERROR',
+  //       message: 'Internal server error: ' + error.message
+  //     });
+  //   }
+  // },
+  // In bookingController.js - Replace the blockRoom method
+
   blockRoom: async (req, res) => {
     try {
       const {
@@ -3656,7 +4134,8 @@ updateBooking: async (req, res) => {
         fromDate,
         toDate,
         reason,
-        blockedBy
+        blockedBy,
+        customerName  // ← ADD THIS - Allow customer name for block
       } = req.body;
 
       const hotelId = req.user.hotel_id;
@@ -3668,7 +4147,8 @@ updateBooking: async (req, res) => {
         fromDate,
         toDate,
         reason,
-        blockedBy
+        blockedBy,
+        customerName
       });
 
       // Find room by ID or number
@@ -3705,10 +4185,49 @@ updateBooking: async (req, res) => {
         });
       }
 
-      // Create a booking record with status 'blocked' (no customer)
+      // ===========================================
+      // HANDLE CUSTOMER IF PROVIDED
+      // ===========================================
+      let customerId = null;
+
+      if (customerName) {
+        // Check if customer exists with this name (simplified - you might want phone too)
+        const [customerRows] = await pool.execute(
+          `SELECT id FROM customers WHERE hotel_id = ? AND name = ? LIMIT 1`,
+          [hotelId, customerName]
+        );
+
+        if (customerRows.length > 0) {
+          customerId = customerRows[0].id;
+          console.log(`✅ Found customer: ${customerId} for block`);
+        } else {
+          // Create a generic customer for this block
+          customerId = await Customer.create({
+            hotel_id: hotelId,
+            name: customerName,
+            phone: '0000000000', // Placeholder
+            email: '',
+            id_number: '',
+            id_type: 'aadhaar',
+            address: '',
+            city: '',
+            state: '',
+            pincode: ''
+          });
+          console.log(`✅ Created customer: ${customerId} for block`);
+        }
+      }
+
+      // Create special requests with block details
+      const specialRequests = `BLOCKED: ${reason || 'No reason provided'}\n` +
+        `Blocked by: ${blockedBy || 'Admin'}\n` +
+        `Customer: ${customerName || 'Not specified'}`;
+
+      // Create a booking record with status 'blocked'
       const bookingData = {
         hotel_id: hotelId,
         room_id: room.id,
+        customer_id: customerId,  // ← Include customer ID if available
         from_date: fromDate,
         to_date: toDate,
         from_time: '00:00',
@@ -3719,13 +4238,13 @@ updateBooking: async (req, res) => {
         total: 0,
         status: 'blocked',
         guests: 0,
-        special_requests: reason || 'Room blocked',
+        special_requests: specialRequests,
         payment_method: 'none',
         payment_status: 'none',
         referral_by: blockedBy || 'Admin'
       };
 
-      const bookingId = await Booking.createSpecialBooking(bookingData, 'block');
+      const bookingId = await Booking.createSpecialBooking(bookingData, 'blocked');
       console.log('✅ Room blocked successfully:', { bookingId });
 
       // Update room status to blocked
@@ -3741,7 +4260,9 @@ updateBooking: async (req, res) => {
           fromDate,
           toDate,
           reason,
-          blockedBy
+          blockedBy,
+          customerName,  // ← Return customer name
+          customerId     // ← Return customer ID
         }
       });
 
@@ -4271,6 +4792,522 @@ updateBooking: async (req, res) => {
         error: 'STATS_FETCH_FAILED',
         message: 'Failed to fetch statistics: ' + error.message
       });
+    }
+  },
+
+  // Unblock room
+  unblockRoom: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const hotelId = req.user.hotel_id;
+
+      console.log('🔓 Unblock room request:', { id, hotelId });
+
+      // Get current booking details
+      const currentBooking = await Booking.findById(id, hotelId);
+      if (!currentBooking) {
+        return res.status(404).json({
+          success: false,
+          error: 'BOOKING_NOT_FOUND',
+          message: 'Booking not found'
+        });
+      }
+
+      // Check if it's actually a blocked room
+      if (currentBooking.status !== 'blocked') {
+        return res.status(400).json({
+          success: false,
+          error: 'NOT_BLOCKED',
+          message: 'This booking is not a blocked room'
+        });
+      }
+
+      // Update booking status to 'available'
+      const updated = await Booking.update(id, hotelId, {
+        status: 'available'
+      });
+
+      if (!updated) {
+        return res.status(404).json({
+          success: false,
+          error: 'UPDATE_FAILED',
+          message: 'Failed to unblock room'
+        });
+      }
+
+      // Get the room ID from the booking
+      const roomId = currentBooking.room_id;
+
+      if (roomId) {
+        // Update room status to available
+        const Room = require('../models/Room');
+        const roomUpdated = await Room.updateStatus(roomId, hotelId, 'available');
+
+        if (!roomUpdated) {
+          console.warn('⚠️ Room status update may have failed:', { roomId, hotelId });
+        } else {
+          console.log('✅ Room status updated to available:', roomId);
+        }
+      }
+
+      console.log('✅ Room unblocked successfully:', { bookingId: id });
+
+      res.json({
+        success: true,
+        message: 'Room unblocked successfully'
+      });
+
+    } catch (error) {
+      console.error('❌ Unblock room error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'SERVER_ERROR',
+        message: 'Internal server error: ' + error.message
+      });
+    }
+  },
+
+  //  createMultipleBookings method
+
+
+  // createMultipleBookings: async (req, res) => {
+  //   try {
+  //     const { bookings, groupBookingId } = req.body;
+  //     const hotelId = req.user.hotel_id;
+
+  //     const results = [];
+  //     const errors = [];
+
+  //     console.log('📦 Processing multiple bookings:', {
+  //       count: bookings.length,
+  //       groupBookingId,
+  //       firstBooking: bookings[0]
+  //     });
+
+  //     // Process each booking
+  //     for (const bookingData of bookings) {
+  //       try {
+  //         // Extract customer details from each booking
+  //         const {
+  //           customer_name,
+  //           customer_phone,
+  //           customer_email,
+  //           customer_id_number,
+  //           id_type,
+  //           address,
+  //           city,
+  //           state,
+  //           pincode,
+  //           customer_gst_no,
+  //           // Room details
+  //           room_id,
+  //           from_date,
+  //           to_date,
+  //           from_time,
+  //           to_time,
+  //           amount,
+  //           service,
+  //           cgst,
+  //           sgst,
+  //           igst,
+  //           total,
+  //           guests,
+  //           special_requests,
+  //           payment_method,
+  //           payment_status,
+  //           id_number
+  //         } = bookingData;
+
+  //         // ===========================================
+  //         // 1. CHECK ROOM AVAILABILITY
+  //         // ===========================================
+  //         const isAvailable = await Booking.checkRoomAvailability(
+  //           room_id,
+  //           hotelId,
+  //           from_date,
+  //           to_date,
+  //           null,
+  //           'booked'
+  //         );
+
+  //         if (!isAvailable) {
+  //           errors.push({
+  //             room_id,
+  //             error: 'ROOM_NOT_AVAILABLE',
+  //             message: `Room ${room_id} is not available for selected dates`
+  //           });
+  //           continue;
+  //         }
+
+  //         // ===========================================
+  //         // 2. HANDLE CUSTOMER
+  //         // ===========================================
+  //         let finalCustomerId = null;
+
+  //         if (customer_name && customer_phone) {
+  //           // Check if customer exists
+  //           let existingCustomer = await Customer.findByPhone(customer_phone, hotelId);
+
+  //           if (existingCustomer) {
+  //             finalCustomerId = existingCustomer.id;
+  //             console.log(`✅ Using existing customer: ${finalCustomerId} for booking`);
+
+  //             // Optionally update customer details
+  //             await Customer.update(existingCustomer.id, hotelId, {
+  //               name: customer_name,
+  //               phone: customer_phone,
+  //               email: customer_email || existingCustomer.email,
+  //               id_number: customer_id_number || existingCustomer.id_number,
+  //               id_type: id_type || existingCustomer.id_type || 'aadhaar',
+  //               address: address || existingCustomer.address,
+  //               city: city || existingCustomer.city,
+  //               state: state || existingCustomer.state,
+  //               pincode: pincode || existingCustomer.pincode,
+  //               customer_gst_no: customer_gst_no || existingCustomer.customer_gst_no
+  //             });
+
+  //           } else {
+  //             // Create new customer
+  //             finalCustomerId = await Customer.create({
+  //               hotel_id: hotelId,
+  //               name: customer_name,
+  //               phone: customer_phone,
+  //               email: customer_email || '',
+  //               id_number: customer_id_number || '',
+  //               id_type: id_type || 'aadhaar',
+  //               address: address || '',
+  //               city: city || '',
+  //               state: state || '',
+  //               pincode: pincode || '',
+  //               customer_gst_no: customer_gst_no || ''
+  //             });
+  //             console.log(`✅ Created new customer: ${finalCustomerId}`);
+  //           }
+  //         }
+
+  //         // ===========================================
+  //         // 3. CREATE BOOKING WITH GROUP ID
+  //         // ===========================================
+  //         const bookingPayload = {
+  //           hotel_id: hotelId,
+  //           room_id,
+  //           customer_id: finalCustomerId,
+  //           group_booking_id: groupBookingId,  // ← CRITICAL: Pass group ID
+  //           from_date,
+  //           to_date,
+  //           from_time: from_time || '14:00',
+  //           to_time: to_time || '12:00',
+  //           amount: parseFloat(amount || 0),
+  //           service: parseFloat(service || 0),
+  //           cgst: parseFloat(cgst || 0),
+  //           sgst: parseFloat(sgst || 0),
+  //           igst: parseFloat(igst || 0),
+  //           total: parseFloat(total || amount || 0),
+  //           status: 'booked',
+  //           guests: parseInt(guests || 1),
+  //           special_requests: special_requests || '',
+  //           payment_method: payment_method || 'cash',
+  //           payment_status: payment_status || 'pending',
+  //           id_type: id_type || 'aadhaar'
+  //         };
+
+  //         // Use the create method that handles customer correctly
+  //         const bookingId = await Booking.create(bookingPayload);
+
+  //         // Update room status
+  //         await Room.updateStatus(room_id, hotelId, 'booked');
+
+  //         results.push({
+  //           bookingId,
+  //           room_id,
+  //           customer_id: finalCustomerId,
+  //           success: true
+  //         });
+
+  //       } catch (error) {
+  //         console.error('❌ Error processing booking:', error);
+  //         errors.push({
+  //           room_id: bookingData.room_id,
+  //           error: error.message
+  //         });
+  //       }
+  //     }
+
+  //     res.json({
+  //       success: true,
+  //       data: {
+  //         successful: results,
+  //         failed: errors,
+  //         groupBookingId,
+  //         totalSuccess: results.length,
+  //         totalFailed: errors.length
+  //       }
+  //     });
+
+  //   } catch (error) {
+  //     console.error('Multiple booking error:', error);
+  //     res.status(500).json({
+  //       success: false,
+  //       error: error.message
+  //     });
+  //   }
+  // },
+
+  // In bookingController.js - Update createMultipleBookings method
+  createMultipleBookings: async (req, res) => {
+    try {
+      const { bookings, groupBookingId } = req.body;
+      const hotelId = req.user.hotel_id;
+      const userId = req.user.userId;  // Get the current user ID for collections
+
+      const results = [];
+      const errors = [];
+
+      console.log('📦 Processing multiple bookings:', {
+        count: bookings.length,
+        groupBookingId,
+        firstBooking: bookings[0]
+      });
+
+      // Process each booking
+      for (const bookingData of bookings) {
+        try {
+          // Extract customer details from each booking
+          const {
+            customer_name,
+            customer_phone,
+            customer_email,
+            customer_id_number,
+            id_type,
+            address,
+            city,
+            state,
+            pincode,
+            customer_gst_no,
+            // Room details
+            room_id,
+            from_date,
+            to_date,
+            from_time,
+            to_time,
+            amount,
+            service,
+            cgst,
+            sgst,
+            igst,
+            total,
+            guests,
+            special_requests,
+            payment_method,
+            payment_status,
+            id_number
+          } = bookingData;
+
+          // ===========================================
+          // 1. CHECK ROOM AVAILABILITY
+          // ===========================================
+          const isAvailable = await Booking.checkRoomAvailability(
+            room_id,
+            hotelId,
+            from_date,
+            to_date,
+            null,
+            'booked'
+          );
+
+          if (!isAvailable) {
+            errors.push({
+              room_id,
+              error: 'ROOM_NOT_AVAILABLE',
+              message: `Room ${room_id} is not available for selected dates`
+            });
+            continue;
+          }
+
+          // ===========================================
+          // 2. HANDLE CUSTOMER
+          // ===========================================
+          let finalCustomerId = null;
+
+          if (customer_name && customer_phone) {
+            // Check if customer exists
+            let existingCustomer = await Customer.findByPhone(customer_phone, hotelId);
+
+            if (existingCustomer) {
+              finalCustomerId = existingCustomer.id;
+              console.log(`✅ Using existing customer: ${finalCustomerId} for booking`);
+
+              // Optionally update customer details
+              await Customer.update(existingCustomer.id, hotelId, {
+                name: customer_name,
+                phone: customer_phone,
+                email: customer_email || existingCustomer.email,
+                id_number: customer_id_number || existingCustomer.id_number,
+                id_type: id_type || existingCustomer.id_type || 'aadhaar',
+                address: address || existingCustomer.address,
+                city: city || existingCustomer.city,
+                state: state || existingCustomer.state,
+                pincode: pincode || existingCustomer.pincode,
+                customer_gst_no: customer_gst_no || existingCustomer.customer_gst_no
+              });
+
+            } else {
+              // Create new customer
+              finalCustomerId = await Customer.create({
+                hotel_id: hotelId,
+                name: customer_name,
+                phone: customer_phone,
+                email: customer_email || '',
+                id_number: customer_id_number || '',
+                id_type: id_type || 'aadhaar',
+                address: address || '',
+                city: city || '',
+                state: state || '',
+                pincode: pincode || '',
+                customer_gst_no: customer_gst_no || ''
+              });
+              console.log(`✅ Created new customer: ${finalCustomerId}`);
+            }
+          }
+
+          // ===========================================
+          // 3. CREATE BOOKING WITH GROUP ID
+          // ===========================================
+          const bookingPayload = {
+            hotel_id: hotelId,
+            room_id,
+            customer_id: finalCustomerId,
+            group_booking_id: groupBookingId,
+            from_date,
+            to_date,
+            from_time: from_time || '14:00',
+            to_time: to_time || '12:00',
+            amount: parseFloat(amount || 0),
+            service: parseFloat(service || 0),
+            cgst: parseFloat(cgst || 0),
+            sgst: parseFloat(sgst || 0),
+            igst: parseFloat(igst || 0),
+            total: parseFloat(total || amount || 0),
+            status: 'booked',
+            guests: parseInt(guests || 1),
+            special_requests: special_requests || '',
+            payment_method: payment_method || 'cash',
+            payment_status: payment_status || 'pending',
+            id_type: id_type || 'aadhaar'
+          };
+
+          // Use the create method that handles customer correctly
+          const bookingId = await Booking.create(bookingPayload);
+
+          // Update room status
+          await Room.updateStatus(room_id, hotelId, 'booked');
+
+          // ===========================================
+          // 4. CREATE TRANSACTION FOR ONLINE PAYMENT
+          // ===========================================
+          if (payment_method === 'online' && bookingId) {
+            try {
+              const Transaction = require('../models/Transaction');
+              const generatedTransactionId = `TXN${Date.now()}${Math.floor(Math.random() * 1000)}-${room_id}`;
+
+              await Transaction.create({
+                hotel_id: hotelId,
+                booking_id: bookingId,
+                customer_id: finalCustomerId,
+                transaction_id: generatedTransactionId,
+                amount: parseFloat(total || amount || 0),
+                currency: 'INR',
+                payment_method: 'online',
+                payment_gateway: 'upi',
+                status: payment_status || 'pending',
+                status_message: payment_status === 'completed' ? 'Payment completed' : 'Payment initiated',
+                metadata: {
+                  room_id: room_id,
+                  from_date: from_date,
+                  to_date: to_date,
+                  customer_name: customer_name,
+                  group_booking_id: groupBookingId
+                }
+              });
+
+              console.log(`💰 Transaction created for booking ${bookingId}`);
+
+              // Update booking with transaction ID
+              await Booking.update(bookingId, hotelId, {
+                transaction_id: generatedTransactionId
+              });
+
+            } catch (transactionError) {
+              console.error('❌ Transaction creation error:', transactionError);
+              // Don't fail the booking if transaction creation fails
+            }
+          }
+
+          // ===========================================
+          // 5. CREATE COLLECTION FOR CASH PAYMENT
+          // ===========================================
+          if (payment_method === 'cash' && bookingId) {
+            try {
+              const Collection = require('../models/Collection');
+              await Collection.createFromCashBooking(bookingId, hotelId, userId);
+              console.log(`✅ Collection created for cash booking ${bookingId}`);
+            } catch (collectionError) {
+              console.error('❌ Failed to create collection:', collectionError);
+            }
+          }
+
+          results.push({
+            bookingId,
+            room_id,
+            customer_id: finalCustomerId,
+            success: true
+          });
+
+        } catch (error) {
+          console.error('❌ Error processing booking:', error);
+          errors.push({
+            room_id: bookingData.room_id,
+            error: error.message
+          });
+        }
+      }
+
+      res.json({
+        success: true,
+        data: {
+          successful: results,
+          failed: errors,
+          groupBookingId,
+          totalSuccess: results.length,
+          totalFailed: errors.length
+        }
+      });
+
+    } catch (error) {
+      console.error('Multiple booking error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  },
+
+  // Get group booking details
+  getGroupBooking: async (req, res) => {
+    try {
+      const { groupId } = req.params;
+      const hotelId = req.user.hotel_id;
+
+      const bookings = await Booking.findByGroupId(groupId, hotelId);
+
+      res.json({
+        success: true,
+        data: bookings
+      });
+
+    } catch (error) {
+      console.error('Error fetching group booking:', error);
+      res.status(500).json({ error: error.message });
     }
   },
 

@@ -1,13 +1,12 @@
-
-
-
+import AddCustomerDialog from '@/components/AddCustomerDialog';
+import EditCustomerDialog from '@/components/EditCustomerDialog';
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Layout from '@/components/Layout';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Search, Loader2, RefreshCw, Download, Eye, FileText, FileDown, FileSpreadsheet } from 'lucide-react';
+import { Search, Loader2, RefreshCw, Download, Eye, FileText, FileDown, FileSpreadsheet, User, Phone, Mail, Calendar, Hash, CreditCard, Pencil } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import {
@@ -15,7 +14,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import {
   DropdownMenu,
@@ -23,18 +21,22 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { GridRenderCellParams } from '@mui/x-data-grid';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 // URLs
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyzexlVpr_2umhzBdpoW4juzQo4rj2zB1pU3vlz6wqY78YQX3d2BFntfiV7dgLf6PvC/exec';
 const NODE_BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
 interface Customer {
-  customerId: string;
+  id: string;
   name: string;
   phone: string;
   email: string;
+  customerNumber: string;
   idNumber: string;
+  idType: string;
   createdAt: string;
   address?: string;
   city?: string;
@@ -44,7 +46,7 @@ interface Customer {
   purpose_of_visit?: string;
   other_expenses?: number;
   expense_description?: string;
-  source?: string; // 'database' or 'google_sheets'
+  source?: string;
 }
 
 /** ✅ Handles dd/mm/yyyy, yyyy-mm-dd, and ISO date formats */
@@ -60,15 +62,8 @@ function parseDateString(value: string): string {
     /^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}):(\d{2}))?/
   );
   if (match) {
-    const [, dd, mm, yyyy, hh = '00', min = '00', ss = '00'] = match;
-    const d = new Date(
-      Number(yyyy),
-      Number(mm) - 1,
-      Number(dd),
-      Number(hh),
-      Number(min),
-      Number(ss)
-    );
+    const [, dd, mm, yyyy] = match;
+    const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
     if (!isNaN(d.getTime())) return d.toLocaleDateString('en-GB');
   }
 
@@ -82,6 +77,17 @@ function parseDateString(value: string): string {
   return value;
 }
 
+// Helper to format ID type label
+const formatIdType = (type: string): string => {
+  const types: Record<string, string> = {
+    aadhaar: 'Aadhaar',
+    pan: 'PAN',
+    passport: 'Passport',
+    driving: 'Driving License'
+  };
+  return types[type] || type;
+};
+
 const Customers = () => {
   const { toast } = useToast();
   const [currentUser] = useState<any>(() => {
@@ -91,20 +97,24 @@ const Customers = () => {
       return {};
     }
   });
-  
+
   const spreadsheetId = currentUser?.spreadsheetId;
   const userSource = currentUser?.source;
   const userPlan = currentUser?.plan;
-  const hotelId = currentUser?.hotelId;
+
+  // Check if user is database/pro user
+  const isDatabaseUser = userSource === 'database' || userPlan === 'pro';
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
+  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [downloadingAll, setDownloadingAll] = useState(false);
+  const [activeTab, setActiveTab] = useState('basic');
 
   // ✅ JSONP helper for Google Sheets
   const loadScript = (src: string) =>
@@ -117,8 +127,7 @@ const Customers = () => {
         if (script && script.parentNode) script.parentNode.removeChild(script);
       };
       const script = document.createElement('script');
-      script.src =
-        src + (src.includes('?') ? '&' : '?') + 'callback=' + callbackName;
+      script.src = src + (src.includes('?') ? '&' : '?') + 'callback=' + callbackName;
       script.id = callbackName;
       script.onerror = () => {
         reject(new Error('Failed to load script'));
@@ -128,7 +137,8 @@ const Customers = () => {
       document.body.appendChild(script);
     });
 
-  // ✅ Fetch from Backend Database (Pro Plan)
+  // ✅ Fetch from Backend Database
+  // ✅ Fetch from Backend Database
   const fetchFromBackend = async (): Promise<Customer[]> => {
     try {
       const token = localStorage.getItem('authToken');
@@ -145,59 +155,80 @@ const Customers = () => {
       }
 
       const data = await response.json();
-      
-      // Transform backend data to match our interface
-      const transformedCustomers = data.data.map((customer: any) => ({
-        customerId: customer.id.toString(),
-        name: customer.name,
-        phone: customer.phone,
-        email: customer.email || '',
-        idNumber: customer.id_number || '',
-        createdAt: parseDateString(customer.created_at),
-        address: customer.address || '',
-        city: customer.city || '',
-        state: customer.state || '',
-        pincode: customer.pincode || '',
-        customer_gst_no: customer.customer_gst_no || '',
-        purpose_of_visit: customer.purpose_of_visit || '',
-        other_expenses: customer.other_expenses || 0,
-        expense_description: customer.expense_description || '',
-        source: 'database'
-      }));
 
-      return transformedCustomers;
+      // Group customers by hotel_id to create sequential numbers
+      const customersByHotel: Record<string, any[]> = {};
+      data.data.forEach((customer: any) => {
+        const hotelId = customer.hotel_id;
+        if (!customersByHotel[hotelId]) {
+          customersByHotel[hotelId] = [];
+        }
+        customersByHotel[hotelId].push(customer);
+      });
+
+      // Sort each hotel's customers by created_at and assign sequential numbers
+      const transformedCustomers: Customer[] = [];
+
+      Object.keys(customersByHotel).forEach(hotelId => {
+        const hotelCustomers = customersByHotel[hotelId];
+        // Sort by created_at
+        hotelCustomers.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+        hotelCustomers.forEach((customer, index) => {
+          transformedCustomers.push({
+            id: customer.id.toString(),
+            name: customer.name,
+            phone: customer.phone,
+            email: customer.email || '',
+            // Use customer_number if exists, otherwise generate sequential number
+            customerNumber: customer.customer_number || (index + 1).toString(),
+            idNumber: customer.id_number || '',
+            idType: customer.id_type || 'aadhaar',
+            createdAt: parseDateString(customer.created_at),
+            address: customer.address || '',
+            city: customer.city || '',
+            state: customer.state || '',
+            pincode: customer.pincode || '',
+            customer_gst_no: customer.customer_gst_no || '',
+            purpose_of_visit: customer.purpose_of_visit || '',
+            other_expenses: customer.other_expenses || 0,
+            expense_description: customer.expense_description || '',
+            source: 'database'
+          });
+        });
+      });
+
+      // Sort all customers by created_at for display
+      return transformedCustomers.sort((a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
     } catch (error) {
       console.error('Error fetching from backend:', error);
       throw error;
     }
   };
 
-  // ✅ Fetch from Google Sheets (Free Plan)
+  // ✅ Fetch from Google Sheets
   const fetchFromGoogleSheets = async (): Promise<Customer[]> => {
     if (!spreadsheetId) return [];
-    
+
     try {
       const custRes = await loadScript(
-        `${APPS_SCRIPT_URL}?action=getCustomers&spreadsheetid=${encodeURIComponent(
-          spreadsheetId
-        )}`
+        `${APPS_SCRIPT_URL}?action=getCustomers&spreadsheetid=${encodeURIComponent(spreadsheetId)}`
       );
 
       if (Array.isArray(custRes.customers)) {
         const normalized = custRes.customers.map((c: any, i: number) => {
-          const createdAt =
-            c.createdAt ||
-            c.CreatedAt ||
-            c.created_at ||
-            c['Created At'] ||
-            '';
+          const createdAt = c.createdAt || c.CreatedAt || c.created_at || c['Created At'] || '';
 
           return {
-            customerId: c.customerId || c.id || `CUST-${i + 1}`,
+            id: c.customerId || c.id || `CUST-${i + 1}`,
             name: c.name || '',
             phone: c.phone ? String(c.phone) : '',
             email: c.email || '',
+            customerNumber: c.customerNumber || '',
             idNumber: c.idNumber || '',
+            idType: c.idType || 'aadhaar',
             createdAt: parseDateString(createdAt),
             source: 'google_sheets'
           } as Customer;
@@ -212,16 +243,54 @@ const Customers = () => {
     }
   };
 
+  // ✅ Update Customer
+  const updateCustomer = async (customerId: string, updatedData: Partial<Customer>) => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`${NODE_BACKEND_URL}/customers/${customerId}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updatedData)
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update customer');
+      }
+
+      const result = await response.json();
+
+      toast({
+        title: "Success",
+        description: "Customer updated successfully"
+      });
+
+      // Refresh the customer list
+      await fetchCustomers();
+
+      return true;
+    } catch (error: any) {
+      console.error('Error updating customer:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update customer",
+        variant: "destructive"
+      });
+      return false;
+    }
+  };
+
   // ✅ Generate PDF for Single Customer
   const generateCustomerPDF = async (customer: Customer) => {
     try {
       setGeneratingPdf(true);
-      
-      if (userSource === 'database' || userPlan === 'pro') {
-        // Generate PDF from backend
+
+      if (isDatabaseUser) {
         const token = localStorage.getItem('authToken');
         const response = await fetch(
-          `${NODE_BACKEND_URL}/customers/${customer.customerId}/pdf`,
+          `${NODE_BACKEND_URL}/customers/${customer.id}/pdf`,
           {
             method: 'GET',
             headers: {
@@ -239,7 +308,7 @@ const Customers = () => {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `Customer_${customer.name}_${customer.customerId}.pdf`;
+        a.download = `Customer_${customer.name}_${customer.id}.pdf`;
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
@@ -250,40 +319,11 @@ const Customers = () => {
           description: "PDF downloaded successfully"
         });
       } else {
-        // For Google Sheets users, generate client-side PDF
-        const { jsPDF } = await import('jspdf');
-        const doc = new jsPDF();
-        
-        // Add customer details to PDF
-        doc.setFontSize(20);
-        doc.text('Customer Details', 20, 20);
-        
-        doc.setFontSize(12);
-        let y = 40;
-        
-        const details = [
-          `Customer ID: ${customer.customerId}`,
-          `Name: ${customer.name}`,
-          `Phone: ${customer.phone}`,
-          `Email: ${customer.email || 'N/A'}`,
-          `ID Number: ${customer.idNumber || 'N/A'}`,
-          `Joined Date: ${customer.createdAt || 'N/A'}`,
-        ];
-        
-        details.forEach((detail) => {
-          doc.text(detail, 20, y);
-          y += 10;
-        });
-        
-        // Add timestamp
-        doc.setFontSize(10);
-        doc.text(`Generated on: ${new Date().toLocaleString()}`, 20, 180);
-        
-        doc.save(`Customer_${customer.name}_${customer.customerId}.pdf`);
-        
+        // For Google Sheets users, show upgrade message
         toast({
-          title: "Success",
-          description: "PDF generated successfully"
+          title: "Feature unavailable",
+          description: "PDF download is only available for Pro Plan users",
+          variant: "destructive"
         });
       }
     } catch (error: any) {
@@ -295,13 +335,13 @@ const Customers = () => {
       });
     } finally {
       setGeneratingPdf(false);
-      setPdfDialogOpen(false);
+      setDetailsDialogOpen(false);
     }
   };
 
-  // ✅ Generate PDF for All Customers (Database Users Only)
+  // ✅ Generate PDF for All Customers
   const generateAllCustomersPDF = async () => {
-    if (userSource !== 'database' && userPlan !== 'pro') {
+    if (!isDatabaseUser) {
       toast({
         title: "Feature unavailable",
         description: "Bulk PDF export is only available for Pro Plan users",
@@ -313,16 +353,13 @@ const Customers = () => {
     try {
       setDownloadingAll(true);
       const token = localStorage.getItem('authToken');
-      const response = await fetch(
-        `${NODE_BACKEND_URL}/customers/export/pdf`,
-        {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      const response = await fetch(`${NODE_BACKEND_URL}/customers/export/pdf`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
 
       if (!response.ok) {
         throw new Error('Failed to generate PDF');
@@ -344,57 +381,19 @@ const Customers = () => {
       });
     } catch (error: any) {
       console.error('Error generating PDF for all customers:', error);
-      
-      // Fallback: Generate client-side PDF if backend fails
-      if (filteredCustomers.length > 0) {
-        const { jsPDF } = await import('jspdf');
-        const { autoTable } = await import('jspdf-autotable');
-        const doc = new jsPDF();
-        
-        // Add title
-        doc.setFontSize(20);
-        doc.text('All Customers Report', 14, 22);
-        
-        // Add date
-        doc.setFontSize(10);
-        doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 32);
-        
-        // Prepare table data
-        const tableData = filteredCustomers.map(customer => [
-          customer.customerId,
-          customer.name,
-          customer.phone,
-          customer.email || 'N/A',
-          customer.idNumber || 'N/A',
-          customer.createdAt,
-          customer.address || 'N/A',
-          customer.customer_gst_no || 'N/A'
-        ]);
-        
-        // Create table
-        autoTable(doc, {
-          head: [['Customer ID', 'Name', 'Phone', 'Email', 'ID Number', 'Joined Date', 'Address', 'GST No']],
-          body: tableData,
-          startY: 40,
-          styles: { fontSize: 8 },
-          headStyles: { fillColor: [41, 128, 185] }
-        });
-        
-        doc.save(`All_Customers_${new Date().toISOString().split('T')[0]}.pdf`);
-        
-        toast({
-          title: "Success",
-          description: "Generated PDF locally with available data"
-        });
-      }
+      toast({
+        title: "Error",
+        description: error.message || "Failed to generate PDF",
+        variant: "destructive"
+      });
     } finally {
       setDownloadingAll(false);
     }
   };
 
-  // ✅ Export to Excel (Database Users Only)
+  // ✅ Export to Excel
   const exportToExcel = async () => {
-    if (userSource !== 'database' && userPlan !== 'pro') {
+    if (!isDatabaseUser) {
       toast({
         title: "Feature unavailable",
         description: "Excel export is only available for Pro Plan users",
@@ -405,19 +404,15 @@ const Customers = () => {
 
     try {
       setDownloadingAll(true);
-      
-      // Try backend export first
+
       const token = localStorage.getItem('authToken');
-      const response = await fetch(
-        `${NODE_BACKEND_URL}/customers/export/excel`,
-        {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      const response = await fetch(`${NODE_BACKEND_URL}/customers/export/excel`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
 
       if (response.ok) {
         const blob = await response.blob();
@@ -435,20 +430,35 @@ const Customers = () => {
           description: "Excel file downloaded successfully"
         });
       } else {
-        // Fallback: Generate CSV if backend export not available
-        generateCSV();
+        toast({
+          title: "Error",
+          description: "Failed to export Excel",
+          variant: "destructive"
+        });
       }
     } catch (error: any) {
       console.error('Error exporting to Excel:', error);
-      // Fallback to CSV
-      generateCSV();
+      toast({
+        title: "Error",
+        description: error.message || "Failed to export Excel",
+        variant: "destructive"
+      });
     } finally {
       setDownloadingAll(false);
     }
   };
 
-  // ✅ Generate CSV as fallback
+  // ✅ Generate CSV
   const generateCSV = () => {
+    if (!isDatabaseUser) {
+      toast({
+        title: "Feature unavailable",
+        description: "CSV export is only available for Pro Plan users",
+        variant: "destructive"
+      });
+      return;
+    }
+
     if (filteredCustomers.length === 0) {
       toast({
         title: "No data",
@@ -460,10 +470,11 @@ const Customers = () => {
 
     try {
       const headers = [
-        'Customer ID',
+        'Customer Number',
         'Name',
         'Phone',
         'Email',
+        'ID Type',
         'ID Number',
         'Joined Date',
         'Address',
@@ -481,10 +492,11 @@ const Customers = () => {
 
       for (const customer of filteredCustomers) {
         const row = [
-          customer.customerId,
+          `"${customer.customerNumber || ''}"`,
           `"${customer.name.replace(/"/g, '""')}"`,
           customer.phone,
           `"${customer.email || ''}"`,
+          `"${formatIdType(customer.idType)}"`,
           `"${customer.idNumber || ''}"`,
           customer.createdAt,
           `"${customer.address || ''}"`,
@@ -527,7 +539,29 @@ const Customers = () => {
   // ✅ View Customer Details
   const viewCustomerDetails = (customer: Customer) => {
     setSelectedCustomer(customer);
-    setPdfDialogOpen(true);
+    setDetailsDialogOpen(true);
+    setActiveTab('basic');
+  };
+
+  // ✅ Edit Customer
+  const handleEditCustomer = (customer: Customer) => {
+    if (!isDatabaseUser) {
+      toast({
+        title: "Feature unavailable",
+        description: "Edit is only available for Pro Plan users",
+        variant: "destructive"
+      });
+      return;
+    }
+    setSelectedCustomer(customer);
+    setEditDialogOpen(true);
+  };
+
+  // ✅ Handle Edit Success
+  const handleEditSuccess = () => {
+    setEditDialogOpen(false);
+    setDetailsDialogOpen(false);
+    fetchCustomers();
   };
 
   // ✅ Main fetch function
@@ -539,23 +573,16 @@ const Customers = () => {
     }
 
     try {
-      console.log("🔄 Fetching customers for user:", {
-        source: userSource,
-        plan: userPlan
-      });
-
       let customersData: Customer[] = [];
 
-      if (userSource === 'database' || userPlan === 'pro') {
-        console.log("📊 Fetching from backend database...");
+      if (isDatabaseUser) {
         customersData = await fetchFromBackend();
       } else {
-        console.log("📊 Fetching from Google Sheets...");
         customersData = await fetchFromGoogleSheets();
       }
 
       setCustomers(customersData);
-      
+
       if (isRefresh) {
         toast({
           title: "Success",
@@ -576,7 +603,6 @@ const Customers = () => {
     }
   };
 
-  // Manual refresh function
   const handleRefresh = async () => {
     await fetchCustomers(true);
   };
@@ -586,138 +612,190 @@ const Customers = () => {
   }, [userSource, userPlan]);
 
   const filteredCustomers = useMemo(() => {
-    const term = searchTerm.toLowerCase();
+    const term = searchTerm.toLowerCase().trim();
+    if (!term) return customers;
+
     return customers.filter(
       (c) =>
-        (c.name || '').toLowerCase().includes(term) ||
-        (c.phone || '').includes(term) ||
-        (c.email || '').toLowerCase().includes(term) ||
-        (c.idNumber || '').toLowerCase().includes(term) ||
-        (c.address || '').toLowerCase().includes(term) ||
-        (c.customer_gst_no || '').toLowerCase().includes(term) ||
-        (c.purpose_of_visit || '').toLowerCase().includes(term)
+        c.customerNumber?.toLowerCase().includes(term) ||
+        c.name?.toLowerCase().includes(term) ||
+        c.phone?.includes(term) ||
+        c.email?.toLowerCase().includes(term) ||
+        c.idNumber?.toLowerCase().includes(term) ||
+        c.address?.toLowerCase().includes(term) ||
+        c.customer_gst_no?.toLowerCase().includes(term) ||
+        c.purpose_of_visit?.toLowerCase().includes(term)
     );
   }, [customers, searchTerm]);
 
-  // Show user plan info
-  const userPlanInfo = userPlan === 'pro' 
-    ? { label: 'Pro Plan', color: 'text-green-600', bgColor: 'bg-green-100' }
-    : { label: 'Free Plan', color: 'text-blue-600', bgColor: 'bg-blue-100' };
+  // ✅ Updated columns with conditional actions based on user type
+  const baseColumns: GridColDef[] = [
+    {
+      field: 'customerNumber',
+      headerName: 'Customer #',
+      width: 130,
+      renderCell: (params) => {
+        const customerNumber = params.value as string;
+        return (
+          <div className="flex items-center gap-2">
+            <Hash className="h-3.5 w-3.5 text-muted-foreground" />
+            <Badge variant="outline" className="font-mono text-xs">
+              {customerNumber || '—'}
+            </Badge>
+          </div>
+        );
+      },
+    },
+    {
+      field: 'name',
+      headerName: 'Customer Name',
+      width: 220,
+      renderCell: (params) => {
+        const customer = params.row as Customer;
+        const initials = customer.name
+          .split(' ')
+          .map(n => n[0])
+          .join('')
+          .toUpperCase()
+          .slice(0, 2);
 
-  // ✅ Replace your columns definition with this corrected version
-  const columns: GridColDef[] = [
-    { 
-      field: 'customerId', 
-      headerName: 'Customer ID', 
+        return (
+          <div className="flex items-center gap-3 py-2">
+            <Avatar className="h-8 w-8 bg-primary/10 text-primary">
+              <AvatarFallback>{initials || 'U'}</AvatarFallback>
+            </Avatar>
+            <div className="flex flex-col">
+              <span className="font-medium">{customer.name}</span>
+              {customer.email && (
+                <span className="text-xs text-muted-foreground truncate max-w-[150px]">
+                  {customer.email}
+                </span>
+              )}
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      field: 'phone',
+      headerName: 'Phone',
+      width: 140,
+      renderCell: (params) => {
+        const phone = params.value as string;
+        return (
+          <div className="flex items-center gap-2">
+            <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+            <span>{phone}</span>
+          </div>
+        );
+      },
+    },
+    {
+      field: 'idNumber',
+      headerName: 'ID Proof',
       width: 180,
       renderCell: (params) => {
         const customer = params.row as Customer;
         return (
           <div className="flex items-center gap-2">
-            <span>{customer.customerId}</span>
+            <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
+            <div className="flex flex-col">
+              <Badge variant="secondary" className="text-xs mb-0.5 w-fit">
+                {formatIdType(customer.idType)}
+              </Badge>
+              <span className="text-xs font-mono">
+                {customer.idNumber || '—'}
+              </span>
+            </div>
           </div>
         );
       },
     },
-    { 
-      field: 'name', 
-      headerName: 'Name', 
-      width: 200 
-    },
-    { 
-      field: 'phone', 
-      headerName: 'Phone', 
-      width: 150 
-    },
-    { 
-      field: 'email', 
-      headerName: 'Email', 
-      width: 220 
-    },
-    { 
-      field: 'idNumber', 
-      headerName: 'ID Number', 
-      width: 160 
-    },
-    ...(userSource === 'database' || userPlan === 'pro' ? [
-      {
-        field: 'address',
-        headerName: 'Address',
-        width: 250,
-        valueGetter: (_, row) => {
-          const customer = row as Customer;
-          if (!customer) return '';
-          const parts = [];
-          if (customer.address) parts.push(customer.address);
-          if (customer.city) parts.push(customer.city);
-          if (customer.state) parts.push(customer.state);
-          if (customer.pincode) parts.push(customer.pincode);
-          return parts.join(', ');
-        },
-      },
-    ] : []),
     {
       field: 'createdAt',
       headerName: 'Joined On',
-      width: 180,
+      width: 130,
       renderCell: (params) => {
-        const customer = params.row as Customer;
-        const dateValue = customer.createdAt;
-        return (
-          <div className="w-full h-full flex items-center justify-start">
-            {dateValue || '—'}
-          </div>
-        );
-      },
-    },
-    {
-      field: 'actions',
-      headerName: 'Actions',
-      width: 120,
-      sortable: false,
-      filterable: false,
-      renderCell: (params) => {
-        const customer = params.row as Customer;
+        const date = params.value as string;
         return (
           <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => viewCustomerDetails(customer)}
-              title="View Details"
-            >
-              <Eye className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => generateCustomerPDF(customer)}
-              disabled={generatingPdf}
-              title="Download PDF"
-            >
-              <FileText className="h-4 w-4" />
-            </Button>
+            <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-sm">{date || '—'}</span>
           </div>
         );
       },
     },
   ];
 
+  // Add actions column only for database users
+  const columns: GridColDef[] = isDatabaseUser
+    ? [
+      ...baseColumns,
+      {
+        field: 'actions',
+        headerName: 'Actions',
+        width: 160,
+        sortable: false,
+        filterable: false,
+        renderCell: (params) => {
+          const customer = params.row as Customer;
+          return (
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => viewCustomerDetails(customer)}
+                title="View Details"
+                className="h-8 w-8"
+              >
+                <Eye className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => handleEditCustomer(customer)}
+                title="Edit Customer"
+                className="h-8 w-8"
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => generateCustomerPDF(customer)}
+                disabled={generatingPdf}
+                title="Download PDF"
+                className="h-8 w-8"
+              >
+                <FileText className="h-4 w-4" />
+              </Button>
+            </div>
+          );
+        },
+      }
+    ]
+    : baseColumns; // No actions column for non-database users
+
   return (
     <Layout>
-      <div className="space-y-6">
+      <div className="space-y-6 p-4 md:p-6">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-bold">Customer Management</h1>
-             
-            </div>
+            <h1 className="text-3xl font-bold tracking-tight">Customers</h1>
+            <p className="text-muted-foreground mt-1">
+              Manage and view all your customer information
+            </p>
           </div>
-          
-          <div className="flex gap-2">
-            {/* Bulk Export Dropdown (Database Users Only) */}
-            {(userSource === 'database' || userPlan === 'pro') && (
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Add Customer Button - Only for database users */}
+            {isDatabaseUser && (
+              <AddCustomerDialog onCustomerAdded={fetchCustomers} />
+            )}
+
+            {/* Bulk Export Dropdown - Only for database users */}
+            {isDatabaseUser && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -726,28 +804,36 @@ const Customers = () => {
                     className="flex items-center gap-2"
                   >
                     <FileDown className="h-4 w-4" />
-                    Export All
+                    <span className="hidden sm:inline">Export</span>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem 
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
                     onClick={generateAllCustomersPDF}
                     disabled={downloadingAll}
                   >
                     <FileText className="h-4 w-4 mr-2" />
-                    Download as PDF ({customers.length} customers)
+                    PDF ({customers.length})
                   </DropdownMenuItem>
-                  <DropdownMenuItem 
+                  <DropdownMenuItem
                     onClick={exportToExcel}
                     disabled={downloadingAll}
                   >
                     <FileSpreadsheet className="h-4 w-4 mr-2" />
-                    Download as Excel
+                    Excel
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={generateCSV}
+                    disabled={downloadingAll}
+                  >
+                    <FileDown className="h-4 w-4 mr-2" />
+                    CSV
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-            
+
+            {/* Refresh Button - Available for all users */}
             <Button
               variant="outline"
               onClick={handleRefresh}
@@ -755,44 +841,109 @@ const Customers = () => {
               className="flex items-center gap-2"
             >
               <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-              {refreshing ? 'Refreshing...' : 'Refresh'}
+              <span className="hidden sm:inline">{refreshing ? 'Refreshing...' : 'Refresh'}</span>
             </Button>
           </div>
         </div>
 
-        <Card>
-          <CardHeader>
+        {/* Stats Cards */}
+        {/* <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Total Customers</p>
+                  <p className="text-2xl font-bold">{customers.length}</p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <User className="h-5 w-5 text-primary" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">With ID Proof</p>
+                  <p className="text-2xl font-bold">
+                    {customers.filter(c => c.idNumber).length}
+                  </p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                  <CreditCard className="h-5 w-5 text-blue-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">With Email</p>
+                  <p className="text-2xl font-bold">
+                    {customers.filter(c => c.email).length}
+                  </p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
+                  <Mail className="h-5 w-5 text-green-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">This Month</p>
+                  <p className="text-2xl font-bold">
+                    {customers.filter(c => {
+                      const date = new Date(c.createdAt);
+                      const now = new Date();
+                      return date.getMonth() === now.getMonth() &&
+                        date.getFullYear() === now.getFullYear();
+                    }).length}
+                  </p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center">
+                  <Calendar className="h-5 w-5 text-purple-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div> */}
+
+        {/* Search and Table Card */}
+        <Card className="border shadow-sm">
+          <CardHeader className="pb-3">
             <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
               <div className="relative flex-1 max-w-md">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
                 <Input
-                  placeholder="Search customers by name, phone, email, ID, address, GST, or purpose..."
+                  placeholder="Search by customer #, name, phone, ID proof, email..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10 w-full"
                 />
               </div>
-              
-              {/* <div className="text-sm text-muted-foreground">
-                Showing {filteredCustomers.length} of {customers.length} customers
-                {searchTerm && ` matching "${searchTerm}"`}
-                {(userSource === 'database' || userPlan === 'pro') && (
-                  <div className="text-xs text-green-600 mt-1">
-                    Bulk export available for all {customers.length} customers
-                  </div>
-                )}
-              </div> */}
+              <div className="text-sm text-muted-foreground">
+                Showing <span className="font-medium">{filteredCustomers.length}</span> of{' '}
+                <span className="font-medium">{customers.length}</span> customers
+              </div>
             </div>
           </CardHeader>
 
-          <CardContent className="relative min-h-[600px] flex items-center justify-center">
+          <CardContent className="p-0 relative min-h-[500px]">
             {(loading || refreshing || downloadingAll) && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/70 backdrop-blur-sm z-10">
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm z-10 rounded-b-lg">
                 <Loader2 className="w-10 h-10 animate-spin text-primary mb-3" />
-                <p className="text-muted-foreground font-medium text-base">
-                  {loading ? 'Loading customer data...' : 
-                   refreshing ? 'Refreshing customers...' : 
-                   'Downloading export...'}
+                <p className="text-muted-foreground font-medium">
+                  {loading ? 'Loading customers...' :
+                    refreshing ? 'Refreshing data...' :
+                      'Preparing download...'}
                 </p>
               </div>
             )}
@@ -801,31 +952,42 @@ const Customers = () => {
               {!loading && !refreshing && !downloadingAll && (
                 <motion.div
                   key="data-grid"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.4, ease: 'easeOut' }}
-                  style={{ height: 600, width: '100%' }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.3 }}
+                  style={{ height: 550, width: '100%' }}
                 >
                   {filteredCustomers.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-                      <p className="text-lg mb-2">No customers found</p>
+                      <User className="h-12 w-12 mb-4 opacity-20" />
+                      <p className="text-lg font-medium">No customers found</p>
                       <p className="text-sm">
-                        {searchTerm ? 'Try adjusting your search terms' : 'No customers available in the system'}
+                        {searchTerm ? 'Try adjusting your search' : 'No customers available'}
                       </p>
                     </div>
                   ) : (
                     <DataGrid
                       rows={filteredCustomers}
                       columns={columns}
-                      getRowId={(row) => `${row.source}-${row.customerId}`}
+                      getRowId={(row) => `${row.source}-${row.id}`}
                       initialState={{
                         pagination: {
                           paginationModel: { page: 0, pageSize: 10 },
                         },
                       }}
-                      pageSizeOptions={[5, 10, 25]}
+                      pageSizeOptions={[5, 10, 25, 50]}
                       disableRowSelectionOnClick
+                      sx={{
+                        border: 'none',
+                        '& .MuiDataGrid-cell': {
+                          borderBottom: '1px solid #f0f0f0',
+                        },
+                        '& .MuiDataGrid-columnHeaders': {
+                          backgroundColor: '#f9fafb',
+                          borderBottom: '1px solid #e5e7eb',
+                        },
+                      }}
                     />
                   )}
                 </motion.div>
@@ -835,129 +997,167 @@ const Customers = () => {
         </Card>
       </div>
 
-      {/* Customer Details & PDF Dialog */}
-      <Dialog open={pdfDialogOpen} onOpenChange={setPdfDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Customer Details</DialogTitle>
-          </DialogHeader>
-          
-          {selectedCustomer && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <h3 className="font-semibold text-lg mb-4">Personal Information</h3>
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Customer ID:</span>
-                      <span className="font-medium">{selectedCustomer.customerId}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Name:</span>
-                      <span className="font-medium">{selectedCustomer.name}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Phone:</span>
-                      <span className="font-medium">{selectedCustomer.phone}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Email:</span>
-                      <span className="font-medium">{selectedCustomer.email || 'N/A'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">ID Number:</span>
-                      <span className="font-medium">{selectedCustomer.idNumber || 'N/A'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Joined Date:</span>
-                      <span className="font-medium">{selectedCustomer.createdAt}</span>
+      {/* Customer Details Dialog - Only for database users */}
+      {isDatabaseUser && (
+        <Dialog open={detailsDialogOpen} onOpenChange={setDetailsDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-xl">Customer Details</DialogTitle>
+            </DialogHeader>
+
+            {selectedCustomer && (
+              <div className="space-y-6 py-4">
+                {/* Profile Header */}
+                <div className="flex items-center gap-4 pb-4 border-b">
+                  <Avatar className="h-16 w-16 bg-primary/10 text-primary">
+                    <AvatarFallback className="text-lg">
+                      {selectedCustomer.name
+                        .split(' ')
+                        .map(n => n[0])
+                        .join('')
+                        .toUpperCase()
+                        .slice(0, 2)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <h2 className="text-2xl font-semibold">{selectedCustomer.name}</h2>
+                    <div className="flex items-center gap-2 mt-1 text-muted-foreground">
+                      <Phone className="h-3.5 w-3.5" />
+                      <span>{selectedCustomer.phone}</span>
                     </div>
                   </div>
                 </div>
 
-                {(userSource === 'database' || userPlan === 'pro') && (
-                  <div>
-                    <h3 className="font-semibold text-lg mb-4">Address & Additional Details</h3>
-                    <div className="space-y-3">
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="basic">Basic Info</TabsTrigger>
+                    <TabsTrigger value="additional">Additional Details</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="basic" className="space-y-4 mt-4">
+                    <div className="space-y-3 bg-muted/30 p-4 rounded-lg">
+                      <InfoRow label="Customer #" value={selectedCustomer.customerNumber || '—'} className="font-mono" />
+                      <InfoRow label="Name" value={selectedCustomer.name} />
+                      <InfoRow label="Phone" value={selectedCustomer.phone} />
+                      <InfoRow label="Email" value={selectedCustomer.email || '—'} />
+                      <InfoRow
+                        label="ID Type"
+                        value={formatIdType(selectedCustomer.idType)}
+                      />
+                      <InfoRow
+                        label="ID Number"
+                        value={selectedCustomer.idNumber || '—'}
+                        className="font-mono"
+                      />
+                      <InfoRow label="Joined Date" value={selectedCustomer.createdAt} />
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="additional" className="space-y-4 mt-4">
+                    <div className="space-y-3 bg-muted/30 p-4 rounded-lg">
                       {selectedCustomer.address && (
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Address:</span>
-                          <span className="font-medium text-right">{selectedCustomer.address}</span>
-                        </div>
+                        <InfoRow label="Address" value={selectedCustomer.address} />
                       )}
-                      {selectedCustomer.city && (
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">City:</span>
-                          <span className="font-medium">{selectedCustomer.city}</span>
-                        </div>
-                      )}
-                      {selectedCustomer.state && (
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">State:</span>
-                          <span className="font-medium">{selectedCustomer.state}</span>
-                        </div>
+                      {(selectedCustomer.city || selectedCustomer.state) && (
+                        <InfoRow
+                          label="City/State"
+                          value={[selectedCustomer.city, selectedCustomer.state]
+                            .filter(Boolean)
+                            .join(', ') || '—'}
+                        />
                       )}
                       {selectedCustomer.pincode && (
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Pincode:</span>
-                          <span className="font-medium">{selectedCustomer.pincode}</span>
-                        </div>
+                        <InfoRow label="Pincode" value={selectedCustomer.pincode} />
                       )}
                       {selectedCustomer.customer_gst_no && (
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">GST No:</span>
-                          <span className="font-medium">{selectedCustomer.customer_gst_no}</span>
-                        </div>
+                        <InfoRow
+                          label="GST No"
+                          value={selectedCustomer.customer_gst_no}
+                          className="font-mono uppercase"
+                        />
                       )}
                       {selectedCustomer.purpose_of_visit && (
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Purpose of Visit:</span>
-                          <span className="font-medium">{selectedCustomer.purpose_of_visit}</span>
-                        </div>
+                        <InfoRow label="Purpose" value={selectedCustomer.purpose_of_visit} />
                       )}
                       {selectedCustomer.other_expenses && selectedCustomer.other_expenses > 0 && (
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Other Expenses:</span>
-                          <span className="font-medium">₹{selectedCustomer.other_expenses}</span>
-                        </div>
+                        <InfoRow
+                          label="Other Expenses"
+                          value={`₹${selectedCustomer.other_expenses.toFixed(2)}`}
+                        />
                       )}
                       {selectedCustomer.expense_description && (
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Expense Description:</span>
-                          <span className="font-medium">{selectedCustomer.expense_description}</span>
-                        </div>
+                        <InfoRow
+                          label="Expense Description"
+                          value={selectedCustomer.expense_description}
+                        />
                       )}
+                      {!selectedCustomer.address && !selectedCustomer.city && !selectedCustomer.customer_gst_no &&
+                        !selectedCustomer.purpose_of_visit && !selectedCustomer.other_expenses && (
+                          <p className="text-sm text-muted-foreground text-center py-4">
+                            No additional details available
+                          </p>
+                        )}
                     </div>
-                  </div>
-                )}
-              </div>
+                  </TabsContent>
+                </Tabs>
 
-              <div className="flex justify-end gap-3 pt-6 border-t">
-                <Button
-                  variant="outline"
-                  onClick={() => setPdfDialogOpen(false)}
-                >
-                  Close
-                </Button>
-                <Button
-                  onClick={() => generateCustomerPDF(selectedCustomer)}
-                  disabled={generatingPdf}
-                  className="flex items-center gap-2"
-                >
-                  {generatingPdf ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Download className="h-4 w-4" />
-                  )}
-                  {generatingPdf ? 'Generating PDF...' : 'Download PDF'}
-                </Button>
+                {/* Action Buttons */}
+                <div className="flex justify-end gap-3 pt-6 border-t">
+                  <Button
+                    variant="outline"
+                    onClick={() => handleEditCustomer(selectedCustomer)}
+                    className="flex items-center gap-2"
+                  >
+                    <Pencil className="h-4 w-4" />
+                    Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setDetailsDialogOpen(false)}
+                  >
+                    Close
+                  </Button>
+                  <Button
+                    onClick={() => generateCustomerPDF(selectedCustomer)}
+                    disabled={generatingPdf}
+                    className="flex items-center gap-2"
+                  >
+                    {generatingPdf ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4" />
+                    )}
+                    {generatingPdf ? 'Generating...' : 'Download PDF'}
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Edit Customer Dialog - Only for database users */}
+      {isDatabaseUser && selectedCustomer && (
+        <EditCustomerDialog
+          open={editDialogOpen}
+          onOpenChange={setEditDialogOpen}
+          customer={selectedCustomer}
+          onSuccess={handleEditSuccess}
+          onUpdate={updateCustomer}
+        />
+      )}
     </Layout>
   );
 };
+
+// Helper component for info rows
+const InfoRow = ({ label, value, className = '' }: { label: string; value: string; className?: string }) => (
+  <div className="flex justify-between items-start gap-4">
+    <span className="text-sm text-muted-foreground whitespace-nowrap">{label}:</span>
+    <span className={`text-sm font-medium text-right break-words ${className}`}>
+      {value || '—'}
+    </span>
+  </div>
+);
 
 export default Customers;

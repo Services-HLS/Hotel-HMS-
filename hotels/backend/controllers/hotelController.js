@@ -13,7 +13,8 @@ const hotelController = {
     try {
       console.log("📝 Received hotel registration request");
 
-      const { hotelName, address, plan, admin, gstNumber, emailOTP } = req.body;
+      // const { hotelName, address, plan, admin, gstNumber, emailOTP } = req.body;
+       const { hotelName, address, plan, admin, gstNumber } = req.body;
 
       // Validate required fields
       if (!hotelName || !address || !plan || !admin) {
@@ -34,13 +35,13 @@ const hotelController = {
       }
 
       // For PRO plan, validate email OTP
-      if (plan === 'pro' && !emailOTP) {
-        return res.status(400).json({
-          success: false,
-          error: 'EMAIL_OTP_REQUIRED',
-          message: 'Email OTP is required for PRO plan registration'
-        });
-      }
+      // if (plan === 'pro' && !emailOTP) {
+      //   return res.status(400).json({
+      //     success: false,
+      //     error: 'EMAIL_OTP_REQUIRED',
+      //     message: 'Email OTP is required for PRO plan registration'
+      //   });
+      // }
 
       // Check if hotel already exists
       const existingHotel = await Hotel.findByName(hotelName);
@@ -89,29 +90,29 @@ const hotelController = {
       // }
 
       // In registerHotel method, around line 50-70
-      if (plan === 'pro') {
-        console.log("🔐 [REGISTRATION] Verifying OTP for:", admin.email);
-        console.log("🔐 [REGISTRATION] OTP provided:", emailOTP);
+      // if (plan === 'pro') {
+      //   console.log("🔐 [REGISTRATION] Verifying OTP for:", admin.email);
+      //   console.log("🔐 [REGISTRATION] OTP provided:", emailOTP);
 
-        const isOTPValid = await User.verifyEmailOTP(admin.email, emailOTP);
+      //   const isOTPValid = await User.verifyEmailOTP(admin.email, emailOTP);
 
-        if (!isOTPValid) {
-          return res.status(400).json({
-            success: false,
-            error: 'INVALID_OTP',
-            message: 'Invalid or expired email OTP'
-          });
-        }
+      //   if (!isOTPValid) {
+      //     return res.status(400).json({
+      //       success: false,
+      //       error: 'INVALID_OTP',
+      //       message: 'Invalid or expired email OTP'
+      //     });
+      //   }
 
-        // ✅ OTP verified successfully - NOW delete it
-        console.log("✅ OTP verified, deleting from database");
-        try {
-          await pool.execute(`DELETE FROM email_otps WHERE email = ?`, [admin.email]);
-          console.log("✅ OTP deleted successfully");
-        } catch (deleteError) {
-          console.warn("⚠️ Could not delete OTP:", deleteError.message);
-        }
-      }
+      //   // ✅ OTP verified successfully - NOW delete it
+      //   console.log("✅ OTP verified, deleting from database");
+      //   try {
+      //     await pool.execute(`DELETE FROM email_otps WHERE email = ?`, [admin.email]);
+      //     console.log("✅ OTP deleted successfully");
+      //   } catch (deleteError) {
+      //     console.warn("⚠️ Could not delete OTP:", deleteError.message);
+      //   }
+      // }
 
       console.log("✅ All validations passed, creating hotel...");
 
@@ -327,185 +328,368 @@ const hotelController = {
   //   }
   // },
 
+  // sendProPlanOTPWithWhatsApp: async (req, res) => {
+  //   try {
+  //     const { email, hotelName, adminName, phone } = req.body;
+
+  //     console.log("📧📱 [SEND PRO OTP WITH WHATSAPP] Request received:", {
+  //       email,
+  //       hotelName,
+  //       adminName,
+  //       phone
+  //     });
+
+  //     if (!email || !hotelName || !adminName) {
+  //       return res.status(400).json({
+  //         success: false,
+  //         error: 'MISSING_FIELDS',
+  //         message: 'Email, hotel name, and admin name are required'
+  //       });
+  //     }
+
+  //     // Generate 6-digit OTP
+  //     const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  //     console.log("🔐 [SEND PRO OTP] Generated OTP:", otp);
+
+  //     // ✅ FIXED: Set expiry to 30 minutes from now
+  //     const otpExpiry = new Date();
+  //     otpExpiry.setMinutes(otpExpiry.getMinutes() + 30);
+
+  //     console.log("🔐 [SEND PRO OTP] Expiry time (local):", otpExpiry.toString());
+  //     console.log("🔐 [SEND PRO OTP] Expiry time (ISO):", otpExpiry.toISOString());
+
+  //     // Save OTP to database
+  //     const saved = await User.saveEmailOTP(email, otp, otpExpiry);
+  //     if (!saved) {
+  //       throw new Error("Failed to save OTP to database");
+  //     }
+
+  //     // TRACK SENDING STATUS
+  //     const deliveryStatus = {
+  //       email: { sent: false, error: null },
+  //       whatsapp: { sent: false, error: null }
+  //     };
+
+  //     // 1. SEND EMAIL OTP
+  //     try {
+  //       await EmailService.sendProPlanOTPEmail(email, otp, hotelName, adminName);
+  //       console.log("📧 [SEND PRO OTP] Email sent successfully");
+  //       deliveryStatus.email.sent = true;
+  //     } catch (emailError) {
+  //       console.error("📧 [SEND PRO OTP] Email sending failed:", emailError.message);
+  //       deliveryStatus.email.error = emailError.message;
+  //     }
+
+  //     // 2. SEND WHATSAPP OTP
+  //     if (phone) {
+  //       try {
+  //         console.log("📱 [SEND PRO OTP] Attempting WhatsApp OTP to:", phone);
+
+  //         const whatsappResult = await WhatsAppService.sendHotelUpdateNotification(
+  //           adminName,
+  //           `OTP: ${otp}`,
+  //           phone
+  //         );
+
+  //         if (whatsappResult.success) {
+  //           console.log("📱 [SEND PRO OTP] WhatsApp OTP sent successfully");
+  //           deliveryStatus.whatsapp.sent = true;
+  //         } else {
+  //           console.log("📱 [SEND PRO OTP] WhatsApp failed:", whatsappResult.error);
+  //           deliveryStatus.whatsapp.error = whatsappResult.error;
+  //         }
+  //       } catch (whatsappError) {
+  //         console.error("📱 [SEND PRO OTP] WhatsApp error:", whatsappError.message);
+  //         deliveryStatus.whatsapp.error = whatsappError.message;
+  //       }
+  //     } else {
+  //       console.log("📱 [SEND PRO OTP] No phone number provided, skipping WhatsApp");
+  //       deliveryStatus.whatsapp.error = "No phone number provided";
+  //     }
+
+  //     // ALWAYS return success if at least ONE channel worked
+  //     const atLeastOneSent = deliveryStatus.email.sent || deliveryStatus.whatsapp.sent;
+
+  //     if (!atLeastOneSent) {
+  //       throw new Error("Failed to send OTP via any channel");
+  //     }
+
+  //     // Build response message
+  //     let message = 'OTP sent successfully';
+  //     const channels = [];
+  //     if (deliveryStatus.email.sent) channels.push('📧 Email');
+  //     if (deliveryStatus.whatsapp.sent) channels.push('📱 WhatsApp');
+
+  //     if (channels.length > 0) {
+  //       message = `OTP sent via ${channels.join(' & ')}`;
+  //     }
+
+  //     res.json({
+  //       success: true,
+  //       message: message,
+  //       data: {
+  //         email: email,
+  //         phone: phone,
+  //         expiry: otpExpiry.toISOString(),
+  //         ...(process.env.NODE_ENV === 'development' && { otp }),
+  //         delivery: deliveryStatus
+  //       }
+  //     });
+
+  //   } catch (error) {
+  //     console.error('❌ [SEND PRO OTP WITH WHATSAPP] Error:', error);
+  //     res.status(500).json({
+  //       success: false,
+  //       error: 'SERVER_ERROR',
+  //       message: 'Failed to send OTP: ' + error.message
+  //     });
+  //   }
+  // },
+
   sendProPlanOTPWithWhatsApp: async (req, res) => {
-    try {
-      const { email, hotelName, adminName, phone } = req.body;
+  try {
+    const { email, hotelName, adminName, phone } = req.body;
 
-      console.log("📧📱 [SEND PRO OTP WITH WHATSAPP] Request received:", {
-        email,
-        hotelName,
-        adminName,
-        phone
-      });
+    console.log("📧📱 [SEND PRO OTP WITH WHATSAPP] Request received:", {
+      email,
+      hotelName,
+      adminName,
+      phone
+    });
 
-      if (!email || !hotelName || !adminName) {
-        return res.status(400).json({
-          success: false,
-          error: 'MISSING_FIELDS',
-          message: 'Email, hotel name, and admin name are required'
-        });
-      }
-
-      // Generate 6-digit OTP
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
-      console.log("🔐 [SEND PRO OTP] Generated OTP:", otp);
-
-      // ✅ FIXED: Set expiry to 30 minutes from now
-      const otpExpiry = new Date();
-      otpExpiry.setMinutes(otpExpiry.getMinutes() + 30);
-
-      console.log("🔐 [SEND PRO OTP] Expiry time (local):", otpExpiry.toString());
-      console.log("🔐 [SEND PRO OTP] Expiry time (ISO):", otpExpiry.toISOString());
-
-      // Save OTP to database
-      const saved = await User.saveEmailOTP(email, otp, otpExpiry);
-      if (!saved) {
-        throw new Error("Failed to save OTP to database");
-      }
-
-      // TRACK SENDING STATUS
-      const deliveryStatus = {
-        email: { sent: false, error: null },
-        whatsapp: { sent: false, error: null }
-      };
-
-      // 1. SEND EMAIL OTP
-      try {
-        await EmailService.sendProPlanOTPEmail(email, otp, hotelName, adminName);
-        console.log("📧 [SEND PRO OTP] Email sent successfully");
-        deliveryStatus.email.sent = true;
-      } catch (emailError) {
-        console.error("📧 [SEND PRO OTP] Email sending failed:", emailError.message);
-        deliveryStatus.email.error = emailError.message;
-      }
-
-      // 2. SEND WHATSAPP OTP
-      if (phone) {
-        try {
-          console.log("📱 [SEND PRO OTP] Attempting WhatsApp OTP to:", phone);
-
-          const whatsappResult = await WhatsAppService.sendHotelUpdateNotification(
-            adminName,
-            `OTP: ${otp}`,
-            phone
-          );
-
-          if (whatsappResult.success) {
-            console.log("📱 [SEND PRO OTP] WhatsApp OTP sent successfully");
-            deliveryStatus.whatsapp.sent = true;
-          } else {
-            console.log("📱 [SEND PRO OTP] WhatsApp failed:", whatsappResult.error);
-            deliveryStatus.whatsapp.error = whatsappResult.error;
-          }
-        } catch (whatsappError) {
-          console.error("📱 [SEND PRO OTP] WhatsApp error:", whatsappError.message);
-          deliveryStatus.whatsapp.error = whatsappError.message;
-        }
-      } else {
-        console.log("📱 [SEND PRO OTP] No phone number provided, skipping WhatsApp");
-        deliveryStatus.whatsapp.error = "No phone number provided";
-      }
-
-      // ALWAYS return success if at least ONE channel worked
-      const atLeastOneSent = deliveryStatus.email.sent || deliveryStatus.whatsapp.sent;
-
-      if (!atLeastOneSent) {
-        throw new Error("Failed to send OTP via any channel");
-      }
-
-      // Build response message
-      let message = 'OTP sent successfully';
-      const channels = [];
-      if (deliveryStatus.email.sent) channels.push('📧 Email');
-      if (deliveryStatus.whatsapp.sent) channels.push('📱 WhatsApp');
-
-      if (channels.length > 0) {
-        message = `OTP sent via ${channels.join(' & ')}`;
-      }
-
-      res.json({
-        success: true,
-        message: message,
-        data: {
-          email: email,
-          phone: phone,
-          expiry: otpExpiry.toISOString(),
-          ...(process.env.NODE_ENV === 'development' && { otp }),
-          delivery: deliveryStatus
-        }
-      });
-
-    } catch (error) {
-      console.error('❌ [SEND PRO OTP WITH WHATSAPP] Error:', error);
-      res.status(500).json({
+    if (!email || !hotelName || !adminName) {
+      return res.status(400).json({
         success: false,
-        error: 'SERVER_ERROR',
-        message: 'Failed to send OTP: ' + error.message
+        error: 'MISSING_FIELDS',
+        message: 'Email, hotel name, and admin name are required'
       });
     }
-  },
+
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    console.log("🔐 [SEND PRO OTP] Generated OTP:", otp);
+
+    // ✅ FIXED: Set expiry to 24 HOURS from now
+    const otpExpiry = new Date();
+    otpExpiry.setHours(otpExpiry.getHours() + 24); // Add 24 hours
+
+    console.log("🔐 [SEND PRO OTP] Expiry time (24 hours later):", otpExpiry.toString());
+    console.log("🔐 [SEND PRO OTP] Expiry time (ISO):", otpExpiry.toISOString());
+
+    // Save OTP to database
+    const saved = await User.saveEmailOTP(email, otp, otpExpiry);
+    if (!saved) {
+      throw new Error("Failed to save OTP to database");
+    }
+
+    // TRACK SENDING STATUS
+    const deliveryStatus = {
+      email: { sent: false, error: null },
+      whatsapp: { sent: false, error: null }
+    };
+
+    // 1. SEND EMAIL OTP
+    try {
+      await EmailService.sendProPlanOTPEmail(email, otp, hotelName, adminName);
+      console.log("📧 [SEND PRO OTP] Email sent successfully");
+      deliveryStatus.email.sent = true;
+    } catch (emailError) {
+      console.error("📧 [SEND PRO OTP] Email sending failed:", emailError.message);
+      deliveryStatus.email.error = emailError.message;
+    }
+
+    // 2. SEND WHATSAPP OTP
+    if (phone) {
+      try {
+        console.log("📱 [SEND PRO OTP] Attempting WhatsApp OTP to:", phone);
+
+        const whatsappResult = await WhatsAppService.sendHotelUpdateNotification(
+          adminName,
+          `OTP: ${otp}`,
+          phone
+        );
+
+        if (whatsappResult.success) {
+          console.log("📱 [SEND PRO OTP] WhatsApp OTP sent successfully");
+          deliveryStatus.whatsapp.sent = true;
+        } else {
+          console.log("📱 [SEND PRO OTP] WhatsApp failed:", whatsappResult.error);
+          deliveryStatus.whatsapp.error = whatsappResult.error;
+        }
+      } catch (whatsappError) {
+        console.error("📱 [SEND PRO OTP] WhatsApp error:", whatsappError.message);
+        deliveryStatus.whatsapp.error = whatsappError.message;
+      }
+    } else {
+      console.log("📱 [SEND PRO OTP] No phone number provided, skipping WhatsApp");
+      deliveryStatus.whatsapp.error = "No phone number provided";
+    }
+
+    // ALWAYS return success if at least ONE channel worked
+    const atLeastOneSent = deliveryStatus.email.sent || deliveryStatus.whatsapp.sent;
+
+    if (!atLeastOneSent) {
+      throw new Error("Failed to send OTP via any channel");
+    }
+
+    // Build response message
+    let message = 'OTP sent successfully (valid for 24 hours)';
+    const channels = [];
+    if (deliveryStatus.email.sent) channels.push('📧 Email');
+    if (deliveryStatus.whatsapp.sent) channels.push('📱 WhatsApp');
+
+    if (channels.length > 0) {
+      message = `OTP sent via ${channels.join(' & ')} (valid for 24 hours)`;
+    }
+
+    res.json({
+      success: true,
+      message: message,
+      data: {
+        email: email,
+        phone: phone,
+        expiry: otpExpiry.toISOString(),
+        expiresIn: '24 hours',
+        ...(process.env.NODE_ENV === 'development' && { otp }),
+        delivery: deliveryStatus
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ [SEND PRO OTP WITH WHATSAPP] Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'SERVER_ERROR',
+      message: 'Failed to send OTP: ' + error.message
+    });
+  }
+},
 
   // Send email OTP for PRO plan registration
+  // sendProPlanOTP: async (req, res) => {
+  //   try {
+  //     const { email, hotelName, adminName } = req.body;
+
+  //     console.log("📧 [SEND PRO OTP] Request received for email:", email);
+
+  //     if (!email || !hotelName || !adminName) {
+  //       return res.status(400).json({
+  //         success: false,
+  //         error: 'MISSING_FIELDS',
+  //         message: 'Email, hotel name, and admin name are required'
+  //       });
+  //     }
+
+  //     // Generate 6-digit OTP
+  //     const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  //     console.log("📧 [SEND PRO OTP] Generated OTP:", otp);
+
+  //     // Set expiry to 15 minutes from now (more buffer)
+  //     const otpExpiry = new Date(Date.now() + 15 * 60 * 1000);
+  //     console.log("📧 [SEND PRO OTP] OTP expiry (JS time):", otpExpiry);
+  //     console.log("📧 [SEND PRO OTP] Current time:", new Date());
+
+  //     // Save OTP to database
+  //     const saved = await User.saveEmailOTP(email, otp, otpExpiry);
+
+  //     if (!saved) {
+  //       throw new Error("Failed to save OTP to database");
+  //     }
+
+  //     console.log("📧 [SEND PRO OTP] OTP saved to database successfully");
+
+  //     // Send OTP email
+  //     try {
+  //       await EmailService.sendProPlanOTPEmail(email, otp, hotelName, adminName);
+  //       console.log("📧 [SEND PRO OTP] Email sent successfully");
+  //     } catch (emailError) {
+  //       console.error("📧 [SEND PRO OTP] Email sending failed:", emailError.message);
+  //       // Don't fail registration if email fails
+  //     }
+
+  //     res.json({
+  //       success: true,
+  //       message: 'OTP sent to email successfully',
+  //       data: {
+  //         email: email,
+  //         expiry: otpExpiry.toISOString(),
+  //         otp: otp // For testing only - remove in production
+  //       }
+  //     });
+
+  //   } catch (error) {
+  //     console.error('❌ [SEND PRO OTP] Error:', error);
+  //     res.status(500).json({
+  //       success: false,
+  //       error: 'SERVER_ERROR',
+  //       message: 'Failed to send OTP: ' + error.message
+  //     });
+  //   }
+  // },
+
   sendProPlanOTP: async (req, res) => {
-    try {
-      const { email, hotelName, adminName } = req.body;
+  try {
+    const { email, hotelName, adminName } = req.body;
 
-      console.log("📧 [SEND PRO OTP] Request received for email:", email);
+    console.log("📧 [SEND PRO OTP] Request received for email:", email);
 
-      if (!email || !hotelName || !adminName) {
-        return res.status(400).json({
-          success: false,
-          error: 'MISSING_FIELDS',
-          message: 'Email, hotel name, and admin name are required'
-        });
-      }
-
-      // Generate 6-digit OTP
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
-      console.log("📧 [SEND PRO OTP] Generated OTP:", otp);
-
-      // Set expiry to 15 minutes from now (more buffer)
-      const otpExpiry = new Date(Date.now() + 15 * 60 * 1000);
-      console.log("📧 [SEND PRO OTP] OTP expiry (JS time):", otpExpiry);
-      console.log("📧 [SEND PRO OTP] Current time:", new Date());
-
-      // Save OTP to database
-      const saved = await User.saveEmailOTP(email, otp, otpExpiry);
-
-      if (!saved) {
-        throw new Error("Failed to save OTP to database");
-      }
-
-      console.log("📧 [SEND PRO OTP] OTP saved to database successfully");
-
-      // Send OTP email
-      try {
-        await EmailService.sendProPlanOTPEmail(email, otp, hotelName, adminName);
-        console.log("📧 [SEND PRO OTP] Email sent successfully");
-      } catch (emailError) {
-        console.error("📧 [SEND PRO OTP] Email sending failed:", emailError.message);
-        // Don't fail registration if email fails
-      }
-
-      res.json({
-        success: true,
-        message: 'OTP sent to email successfully',
-        data: {
-          email: email,
-          expiry: otpExpiry.toISOString(),
-          otp: otp // For testing only - remove in production
-        }
-      });
-
-    } catch (error) {
-      console.error('❌ [SEND PRO OTP] Error:', error);
-      res.status(500).json({
+    if (!email || !hotelName || !adminName) {
+      return res.status(400).json({
         success: false,
-        error: 'SERVER_ERROR',
-        message: 'Failed to send OTP: ' + error.message
+        error: 'MISSING_FIELDS',
+        message: 'Email, hotel name, and admin name are required'
       });
     }
-  },
+
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    console.log("📧 [SEND PRO OTP] Generated OTP:", otp);
+
+    // ✅ FIXED: Set expiry to 24 HOURS from now
+    const otpExpiry = new Date();
+    otpExpiry.setHours(otpExpiry.getHours() + 24); // Add 24 hours
+
+    console.log("📧 [SEND PRO OTP] OTP expiry (24 hours later):", otpExpiry);
+    console.log("📧 [SEND PRO OTP] Current time:", new Date());
+
+    // Save OTP to database
+    const saved = await User.saveEmailOTP(email, otp, otpExpiry);
+
+    if (!saved) {
+      throw new Error("Failed to save OTP to database");
+    }
+
+    console.log("📧 [SEND PRO OTP] OTP saved to database successfully");
+
+    // Send OTP email
+    try {
+      await EmailService.sendProPlanOTPEmail(email, otp, hotelName, adminName);
+      console.log("📧 [SEND PRO OTP] Email sent successfully");
+    } catch (emailError) {
+      console.error("📧 [SEND PRO OTP] Email sending failed:", emailError.message);
+      // Don't fail registration if email fails
+    }
+
+    res.json({
+      success: true,
+      message: 'OTP sent to email successfully (valid for 24 hours)',
+      data: {
+        email: email,
+        expiry: otpExpiry.toISOString(),
+        expiresIn: '24 hours',
+        otp: otp // For testing only - remove in production
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ [SEND PRO OTP] Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'SERVER_ERROR',
+      message: 'Failed to send OTP: ' + error.message
+    });
+  }
+},
 
   // Verify email OTP
   verifyEmailOTP: async (req, res) => {

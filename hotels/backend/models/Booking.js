@@ -395,12 +395,12 @@
 //   try {
 //     const [result] = await pool.execute(query, params);
 //     console.log('✅ Update result:', result.affectedRows > 0);
-    
+
 //     // ✅ Update room status when booking is completed or cancelled
 //     if (result.affectedRows > 0 && (bookingData.status === 'completed' || bookingData.status === 'cancelled')) {
 //       // Get the room_id - either from bookingData or fetch it
 //       let roomId = bookingData.room_id;
-      
+
 //       if (!roomId) {
 //         // Fetch the booking to get room_id
 //         const [bookingRows] = await pool.execute(
@@ -411,7 +411,7 @@
 //           roomId = bookingRows[0].room_id;
 //         }
 //       }
-      
+
 //       if (roomId) {
 //         // Update room status to available
 //         const Room = require('./Room');
@@ -419,7 +419,7 @@
 //         console.log(`✅ Room ${roomId} status updated to available`);
 //       }
 //     }
-    
+
 //     return result.affectedRows > 0;
 //   } catch (error) {
 //     console.error('❌ Error in Booking.update:', error);
@@ -597,14 +597,14 @@
 //         )
 //         ${excludeBookingId ? 'AND b.id != ?' : ''}
 //       `;
-      
+
 //       params = [
 //         roomId, hotelId,
 //         dbToDate, dbFromDate,  // Overlap: existing booking ends after new start AND starts before new end
 //         dbToDate, dbFromDate,  // Alternative condition
 //         dbFromDate, dbToDate   // Existing booking is completely within new dates
 //       ];
-      
+
 //       if (excludeBookingId) {
 //         params.push(excludeBookingId);
 //       }
@@ -624,14 +624,14 @@
 //         )
 //         ${excludeBookingId ? 'AND b.id != ?' : ''}
 //       `;
-      
+
 //       params = [
 //         roomId, hotelId,
 //         dbToDate, dbFromDate,
 //         dbToDate, dbFromDate,
 //         dbFromDate, dbToDate
 //       ];
-      
+
 //       if (excludeBookingId) {
 //         params.push(excludeBookingId);
 //       }
@@ -663,7 +663,7 @@
 //     }
 
 //     console.log('='.repeat(40));
-    
+
 //     return rows.length === 0; // Available if no conflicts
 //   } catch (error) {
 //     console.error('❌ ERROR in checkRoomAvailability:', error);
@@ -779,7 +779,7 @@
 //     }
 
 //     console.log('='.repeat(40));
-    
+
 //     return rows.length > 0 ? rows[0] : null; // Return the duplicate if exists
 //   } catch (error) {
 //     console.error('❌ Error checking duplicate booking:', error);
@@ -959,8 +959,128 @@ const bookingQueries = require('../queries/bookingQueries');
 
 class Booking {
   // Create new booking with all details
+  // static async create(bookingData) {
+  //   try {
+  //     const total = bookingData.total ||
+  //       (parseFloat(bookingData.amount || 0) +
+  //         parseFloat(bookingData.service || 0) +
+  //         parseFloat(bookingData.gst || 0) +
+  //         parseFloat(bookingData.cgst || 0) +
+  //         parseFloat(bookingData.sgst || 0) +
+  //         parseFloat(bookingData.igst || 0));
+
+  //     // Make sure status is valid
+  //     const status = bookingData.status || 'booked';
+  //     const validStatuses = ['booked', 'maintenance', 'blocked', 'available', 'completed', 'cancelled'];
+  //     const finalStatus = validStatuses.includes(status) ? status : 'booked';
+
+  //     const [result] = await pool.execute(
+  //       bookingQueries.CREATE_BOOKING,
+  //       [
+  //         bookingData.hotel_id,
+  //         bookingData.room_id,
+  //         bookingData.customer_id || null,
+  //         bookingData.from_date,
+  //         bookingData.to_date,
+  //         bookingData.from_time || '14:00:00',
+  //         bookingData.to_time || '12:00:00',
+  //         finalStatus,
+  //         parseFloat(bookingData.amount || 0),
+  //         parseFloat(bookingData.service || 0),
+  //         parseFloat(bookingData.gst || 0),
+  //         parseFloat(bookingData.cgst || 0),
+  //         parseFloat(bookingData.sgst || 0),
+  //         parseFloat(bookingData.igst || 0),
+  //         parseFloat(total),
+  //         parseInt(bookingData.guests || 1),
+  //         bookingData.special_requests || '',
+  //         bookingData.id_type || 'aadhaar',
+  //         bookingData.payment_method || 'cash',
+  //         bookingData.payment_status || 'pending',
+  //         bookingData.transaction_id || null,
+  //         bookingData.referral_by || '',
+  //         parseFloat(bookingData.referral_amount || 0),
+  //         bookingData.invoice_number || null
+  //       ]
+  //     );
+  //     return result.insertId;
+  //   } catch (error) {
+  //     console.error('Error in Booking.create:', error);
+  //     throw error;
+  //   }
+  // }
+
+  // In models/Booking.js - Find the create method and replace it
+  // static async create(bookingData) {
+  //   try {
+  //     // Calculate total if not provided
+  //     const total = bookingData.total ||
+  //       (parseFloat(bookingData.amount || 0) +
+  //         parseFloat(bookingData.service || 0) +
+  //         parseFloat(bookingData.gst || 0) +
+  //         parseFloat(bookingData.cgst || 0) +
+  //         parseFloat(bookingData.sgst || 0) +
+  //         parseFloat(bookingData.igst || 0));
+
+  //     // Calculate advance payment fields
+  //     const advancePaid = parseFloat(bookingData.advance_amount_paid || 0);
+  //     const remainingAmount = total - advancePaid;
+
+  //     // Make sure status is valid
+  //     const status = bookingData.status || 'booked';
+  //     const validStatuses = ['booked', 'maintenance', 'blocked', 'available', 'completed', 'cancelled'];
+  //     const finalStatus = validStatuses.includes(status) ? status : 'booked';
+
+  //     console.log('📝 Creating booking with advance payment:', {
+  //       total,
+  //       advancePaid,
+  //       remainingAmount,
+  //       advance_booking_id: bookingData.advance_booking_id
+  //     });
+
+  //     const [result] = await pool.execute(
+  //       bookingQueries.CREATE_BOOKING,
+  //       [
+  //         bookingData.hotel_id,
+  //         bookingData.room_id,
+  //         bookingData.customer_id || null,
+  //         bookingData.advance_booking_id || null,  // ← NEW: Link to advance booking
+  //         bookingData.from_date,
+  //         bookingData.to_date,
+  //         bookingData.from_time || '14:00:00',
+  //         bookingData.to_time || '12:00:00',
+  //         finalStatus,
+  //         parseFloat(bookingData.amount || 0),
+  //         parseFloat(bookingData.service || 0),
+  //         parseFloat(bookingData.gst || 0),
+  //         parseFloat(bookingData.cgst || 0),
+  //         parseFloat(bookingData.sgst || 0),
+  //         parseFloat(bookingData.igst || 0),
+  //         parseFloat(total),                         // Full total
+  //         advancePaid,                                // ← NEW: Advance amount paid
+  //         remainingAmount,                            // ← NEW: Remaining amount
+  //         parseInt(bookingData.guests || 1),
+  //         bookingData.special_requests || '',
+  //         bookingData.id_type || 'aadhaar',
+  //         bookingData.payment_method || 'cash',
+  //         bookingData.payment_status || 'pending',
+  //         bookingData.transaction_id || null,
+  //         bookingData.referral_by || '',
+  //         parseFloat(bookingData.referral_amount || 0),
+  //         bookingData.invoice_number || null
+  //       ]
+  //     );
+  //     return result.insertId;
+  //   } catch (error) {
+  //     console.error('Error in Booking.create:', error);
+  //     throw error;
+  //   }
+  // }
+
+  // In models/Booking.js - Update the create method
   static async create(bookingData) {
     try {
+      // Calculate total if not provided
       const total = bookingData.total ||
         (parseFloat(bookingData.amount || 0) +
           parseFloat(bookingData.service || 0) +
@@ -969,10 +1089,22 @@ class Booking {
           parseFloat(bookingData.sgst || 0) +
           parseFloat(bookingData.igst || 0));
 
+      // Calculate advance payment fields
+      const advancePaid = parseFloat(bookingData.advance_amount_paid || 0);
+      const remainingAmount = total - advancePaid;
+
       // Make sure status is valid
       const status = bookingData.status || 'booked';
       const validStatuses = ['booked', 'maintenance', 'blocked', 'available', 'completed', 'cancelled'];
       const finalStatus = validStatuses.includes(status) ? status : 'booked';
+
+      console.log('📝 Creating booking with advance payment:', {
+        total,
+        advancePaid,
+        remainingAmount,
+        advance_booking_id: bookingData.advance_booking_id,
+        group_booking_id: bookingData.group_booking_id // Add this log
+      });
 
       const [result] = await pool.execute(
         bookingQueries.CREATE_BOOKING,
@@ -980,6 +1112,8 @@ class Booking {
           bookingData.hotel_id,
           bookingData.room_id,
           bookingData.customer_id || null,
+          bookingData.advance_booking_id || null,
+          bookingData.group_booking_id || null,  // ← ADD THIS - group_booking_id
           bookingData.from_date,
           bookingData.to_date,
           bookingData.from_time || '14:00:00',
@@ -992,6 +1126,8 @@ class Booking {
           parseFloat(bookingData.sgst || 0),
           parseFloat(bookingData.igst || 0),
           parseFloat(total),
+          advancePaid,
+          remainingAmount,
           parseInt(bookingData.guests || 1),
           bookingData.special_requests || '',
           bookingData.id_type || 'aadhaar',
@@ -1006,6 +1142,20 @@ class Booking {
       return result.insertId;
     } catch (error) {
       console.error('Error in Booking.create:', error);
+      throw error;
+    }
+  }
+
+  // Add this new method to get booking with advance details
+  static async findByIdWithAdvance(id, hotelId) {
+    try {
+      const [rows] = await pool.execute(
+        bookingQueries.GET_BOOKING_WITH_ADVANCE,
+        [id, hotelId]
+      );
+      return rows[0] || null;
+    } catch (error) {
+      console.error('Error in findByIdWithAdvance:', error);
       throw error;
     }
   }
@@ -1127,10 +1277,10 @@ class Booking {
     try {
       const [result] = await pool.execute(query, params);
       console.log('✅ Update result:', result.affectedRows > 0);
-      
+
       if (result.affectedRows > 0 && (bookingData.status === 'completed' || bookingData.status === 'cancelled')) {
         let roomId = bookingData.room_id;
-        
+
         if (!roomId) {
           const [bookingRows] = await pool.execute(
             'SELECT room_id FROM bookings WHERE id = ? AND hotel_id = ?',
@@ -1140,14 +1290,14 @@ class Booking {
             roomId = bookingRows[0].room_id;
           }
         }
-        
+
         if (roomId) {
           const Room = require('./Room');
           await Room.updateStatus(roomId, hotelId, 'available');
           console.log(`✅ Room ${roomId} status updated to available`);
         }
       }
-      
+
       return result.affectedRows > 0;
     } catch (error) {
       console.error('❌ Error in Booking.update:', error);
@@ -1180,14 +1330,14 @@ class Booking {
         )
         ${excludeBookingId ? 'AND b.id != ?' : ''}
       `;
-      
+
       const params = [
         roomId, hotelId,
         toDate, fromDate,
         toDate, fromDate,
         fromDate, toDate
       ];
-      
+
       if (excludeBookingId) {
         params.push(excludeBookingId);
       }
@@ -1198,7 +1348,7 @@ class Booking {
       const [rows] = await pool.execute(query, params);
 
       console.log(`📊 Found ${rows.length} conflicting bookings`);
-      
+
       if (rows.length > 0) {
         console.log('❌ Conflicts:', rows.map(r => ({
           id: r.id,
@@ -1251,7 +1401,7 @@ class Booking {
       if (rows.length > 0) {
         console.log('❌ Duplicate details:', rows[0]);
       }
-      
+
       return rows.length > 0 ? rows[0] : null;
     } catch (error) {
       console.error('❌ Error checking duplicate booking:', error);
@@ -1321,6 +1471,72 @@ class Booking {
   }
 
   // Create special booking (block/maintenance)
+  // static async createSpecialBooking(bookingData, type = 'blocked') {
+  //   try {
+  //     console.log('📝 Creating special booking:', { bookingData, type });
+
+  //     if (!bookingData.hotel_id || !bookingData.room_id || !bookingData.from_date || !bookingData.to_date) {
+  //       throw new Error('Missing required fields');
+  //     }
+
+  //     const defaults = {
+  //       from_time: '00:00:00',
+  //       to_time: '23:59:59',
+  //       amount: 0,
+  //       service: 0,
+  //       gst: 0,
+  //       total: 0,
+  //       status: type,
+  //       guests: 0,
+  //       special_requests: type === 'blocked' ? 'Room blocked' : 'Room under maintenance',
+  //       payment_method: 'none',
+  //       payment_status: 'none',
+  //       referral_by: 'Admin',
+  //       referral_amount: 0
+  //     };
+
+  //     const mergedData = { ...defaults, ...bookingData };
+
+  //     const query = `
+  //       INSERT INTO bookings (
+  //         hotel_id, room_id, from_date, to_date, from_time, to_time,
+  //         status, amount, service, gst, total, guests, special_requests,
+  //         payment_method, payment_status, referral_by, referral_amount
+  //       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  //     `;
+
+  //     const values = [
+  //       mergedData.hotel_id,
+  //       mergedData.room_id,
+  //       mergedData.from_date,
+  //       mergedData.to_date,
+  //       mergedData.from_time,
+  //       mergedData.to_time,
+  //       mergedData.status,
+  //       mergedData.amount,
+  //       mergedData.service,
+  //       mergedData.gst,
+  //       mergedData.total,
+  //       mergedData.guests,
+  //       mergedData.special_requests,
+  //       mergedData.payment_method,
+  //       mergedData.payment_status,
+  //       mergedData.referral_by,
+  //       mergedData.referral_amount
+  //     ];
+
+  //     const [result] = await pool.execute(query, values);
+  //     console.log('✅ Special booking created with ID:', result.insertId);
+
+  //     return result.insertId;
+
+  //   } catch (error) {
+  //     console.error('❌ Error creating special booking:', error);
+  //     throw error;
+  //   }
+  // }
+
+  // In models/Booking.js - Update createSpecialBooking
   static async createSpecialBooking(bookingData, type = 'blocked') {
     try {
       console.log('📝 Creating special booking:', { bookingData, type });
@@ -1348,16 +1564,17 @@ class Booking {
       const mergedData = { ...defaults, ...bookingData };
 
       const query = `
-        INSERT INTO bookings (
-          hotel_id, room_id, from_date, to_date, from_time, to_time,
-          status, amount, service, gst, total, guests, special_requests,
-          payment_method, payment_status, referral_by, referral_amount
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `;
-      
+      INSERT INTO bookings (
+        hotel_id, room_id, customer_id, from_date, to_date, from_time, to_time,
+        status, amount, service, gst, total, guests, special_requests,
+        payment_method, payment_status, referral_by, referral_amount
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
       const values = [
         mergedData.hotel_id,
         mergedData.room_id,
+        mergedData.customer_id || null,  // ← Include customer_id
         mergedData.from_date,
         mergedData.to_date,
         mergedData.from_time,
@@ -1390,6 +1607,74 @@ class Booking {
   static async delete(id, hotelId) {
     const [result] = await pool.execute(bookingQueries.DELETE_BOOKING, [id, hotelId]);
     return result.affectedRows > 0;
+  }
+
+  
+  //  createWithGroup 
+  static async createWithGroup(bookingData) {
+    try {
+      const [result] = await pool.execute(
+        `INSERT INTO bookings (
+        hotel_id, room_id, customer_id, group_booking_id,
+        from_date, to_date, from_time, to_time,
+        status, amount, service, cgst, sgst, igst, total,
+        guests, special_requests, payment_method, payment_status,
+        id_type, transaction_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          bookingData.hotel_id,
+          bookingData.room_id,
+          bookingData.customer_id,
+          bookingData.group_booking_id,
+          bookingData.from_date,
+          bookingData.to_date,
+          bookingData.from_time,
+          bookingData.to_time,
+          bookingData.status || 'booked',
+          parseFloat(bookingData.amount || 0),
+          parseFloat(bookingData.service || 0),
+          parseFloat(bookingData.cgst || 0),
+          parseFloat(bookingData.sgst || 0),
+          parseFloat(bookingData.igst || 0),
+          parseFloat(bookingData.total || 0),
+          parseInt(bookingData.guests || 1),
+          bookingData.special_requests || '',
+          bookingData.payment_method || 'cash',
+          bookingData.payment_status || 'pending',
+          bookingData.id_type || 'aadhaar',
+          bookingData.transaction_id || null
+        ]
+      );
+      return result.insertId;
+    } catch (error) {
+      console.error('Error in Booking.createWithGroup:', error);
+      throw error;
+    }
+  }
+
+  // Find all bookings in a group
+  static async findByGroupId(groupId, hotelId) {
+    try {
+      const [rows] = await pool.execute(
+        `SELECT b.*, r.room_number, r.type as room_type,
+              c.name as customer_name, c.phone as customer_phone
+       FROM bookings b
+       LEFT JOIN rooms r ON b.room_id = r.id
+       LEFT JOIN customers c ON b.customer_id = c.id
+       WHERE b.group_booking_id = ? AND b.hotel_id = ?
+       ORDER BY b.room_id`,
+        [groupId, hotelId]
+      );
+      return rows;
+    } catch (error) {
+      console.error('Error in Booking.findByGroupId:', error);
+      throw error;
+    }
+  }
+
+  // Generate unique group ID
+  static generateGroupId() {
+    return `GRP-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 }
 

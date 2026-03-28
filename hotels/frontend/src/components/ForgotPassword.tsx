@@ -23,7 +23,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "react-router-dom";
 
-const NODE_BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+const NODE_BACKEND_URL = import.meta.env.VITE_BACKEND_URL ;
 
 interface HotelOption {
   hotelId: number;

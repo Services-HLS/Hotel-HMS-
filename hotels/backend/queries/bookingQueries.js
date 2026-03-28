@@ -1,20 +1,34 @@
 
 const bookingQueries = {
   // Create new booking with all fields
- CREATE_BOOKING: `INSERT INTO bookings (
-    hotel_id, room_id, customer_id, from_date, to_date, from_time, to_time,
-    status, amount, service, gst, cgst, sgst, igst, total, guests, special_requests,
-    id_type, payment_method, payment_status, transaction_id,
+  // CREATE_BOOKING: `INSERT INTO bookings (
+  //   hotel_id, room_id, customer_id, advance_booking_id, from_date, to_date, from_time, to_time,
+  //   status, amount, service, gst, cgst, sgst, igst, total, advance_amount_paid, remaining_amount,
+  //   guests, special_requests, id_type, payment_method, payment_status, transaction_id,
+  //   referral_by, referral_amount, invoice_number
+  // ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+
+  CREATE_BOOKING: `INSERT INTO bookings (
+    hotel_id, room_id, customer_id, advance_booking_id, group_booking_id, from_date, to_date, from_time, to_time,
+    status, amount, service, gst, cgst, sgst, igst, total, advance_amount_paid, remaining_amount,
+    guests, special_requests, id_type, payment_method, payment_status, transaction_id,
     referral_by, referral_amount, invoice_number
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 
 
   // Create booking without customer (for blocks/maintenance)
-CREATE_BOOKING_WITHOUT_CUSTOMER: `INSERT INTO bookings (
-    hotel_id, room_id, from_date, to_date, from_time, to_time,
-    status, amount, service, gst, cgst, sgst, igst, total, guests, special_requests,
-    referral_by, referral_amount
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  // CREATE_BOOKING_WITHOUT_CUSTOMER: `INSERT INTO bookings (
+  //   hotel_id, room_id, from_date, to_date, from_time, to_time,
+  //   status, amount, service, gst, cgst, sgst, igst, total, guests, special_requests,
+  //   referral_by, referral_amount
+  // ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+
+  // Update CREATE_BOOKING_WITHOUT_CUSTOMER to include customer_id
+  CREATE_BOOKING_WITHOUT_CUSTOMER: `INSERT INTO bookings (
+  hotel_id, room_id, customer_id, from_date, to_date, from_time, to_time,
+  status, amount, service, gst, cgst, sgst, igst, total, guests, special_requests,
+  referral_by, referral_amount
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   // Original create booking (for backward compatibility)
   CREATE_BOOKING_ORIGINAL: `INSERT INTO bookings (
     hotel_id, room_id, customer_id, from_date, to_date, from_time, to_time,
@@ -65,7 +79,7 @@ CREATE_BOOKING_WITHOUT_CUSTOMER: `INSERT INTO bookings (
   `,
 
   // Update booking
- UPDATE_BOOKING: `UPDATE bookings SET 
+  UPDATE_BOOKING: `UPDATE bookings SET 
     room_id = ?, customer_id = ?, from_date = ?, to_date = ?, 
     from_time = ?, to_time = ?, amount = ?, service = ?, 
     gst = ?, cgst = ?, sgst = ?, igst = ?,
@@ -157,6 +171,18 @@ CREATE_BOOKING_WITHOUT_CUSTOMER: `INSERT INTO bookings (
     WHERE b.hotel_id = ?
     AND b.payment_status = ?
     ORDER BY b.created_at DESC
+  `,
+
+  // Add new query to get booking with advance details
+  GET_BOOKING_WITH_ADVANCE: `
+    SELECT b.*, 
+           ab.invoice_number as advance_invoice_number,
+           ab.advance_expiry_date,
+           ab.advance_amount as original_advance_amount,
+           ab.status as advance_status
+    FROM bookings b
+    LEFT JOIN advance_bookings ab ON b.advance_booking_id = ab.id
+    WHERE b.id = ? AND b.hotel_id = ?
   `,
 };
 

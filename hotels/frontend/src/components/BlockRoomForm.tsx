@@ -45,6 +45,8 @@ const BlockRoomForm = ({
     }
   );
 
+  const [customerName, setCustomerName] = useState('');
+
   // JSONP fetch for Google Sheets (same as in RoomBooking component)
   function jsonpFetch<T>(src: string): Promise<T> {
     return new Promise<T>((resolve, reject) => {
@@ -78,110 +80,111 @@ const BlockRoomForm = ({
   }
 
   // Update the handleSubmit function in BlockRoomForm.tsx
-const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  
-  if (!dateRange?.from || !dateRange?.to) {
-    toast({
-      title: "Error",
-      description: "Please select a date range",
-      variant: "destructive"
-    });
-    return;
-  }
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-  if (!reason.trim()) {
-    toast({
-      title: "Error",
-      description: "Please provide a reason for blocking",
-      variant: "destructive"
-    });
-    return;
-  }
-
-  setLoading(true);
-
-  try {
-    const payload = {
-      roomId: room.roomId,
-      roomNumber: String(room.number),
-      fromDate: format(dateRange.from, 'yyyy-MM-dd'),
-      toDate: format(dateRange.to, 'yyyy-MM-dd'),
-      reason,
-      blockedBy: blockedBy || 'Admin'
-    };
-
-    console.log('📤 Block room payload:', payload);
-
-    if (userSource === 'database') {
-      // Call the new block-room endpoint
-      const token = localStorage.getItem('authToken');
-      const response = await fetch(`${NODE_BACKEND_URL}/bookings/block-room`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(payload)
+    if (!dateRange?.from || !dateRange?.to) {
+      toast({
+        title: "Error",
+        description: "Please select a date range",
+        variant: "destructive"
       });
-
-      const result = await response.json();
-      console.log('✅ Database response:', result);
-
-      if (response.ok && result.success) {
-        toast({
-          title: "Success",
-          description: `Room ${room.number} has been blocked successfully`
-        });
-        onSuccess();
-        onClose();
-      } else {
-        throw new Error(result.message || 'Failed to block room');
-      }
-    } else {
-      // Google Sheets - use JSONP
-      if (!spreadsheetId) {
-        throw new Error('No spreadsheet ID provided');
-      }
-
-      const params = new URLSearchParams();
-      params.append('action', 'blockRoom');
-      params.append('spreadsheetid', spreadsheetId);
-      params.append('roomId', String(room.roomId));
-      params.append('roomNumber', String(room.number));
-      params.append('fromDate', format(dateRange.from, 'yyyy-MM-dd'));
-      params.append('toDate', format(dateRange.to, 'yyyy-MM-dd'));
-      params.append('reason', reason);
-      params.append('blockedBy', blockedBy || 'Admin');
-
-      const scriptUrl = `${APPS_SCRIPT_URL}?${params.toString()}`;
-      console.log('📤 Calling Google Apps Script:', scriptUrl);
-
-      const result = await jsonpFetch<any>(scriptUrl);
-      console.log('✅ Google Sheets response:', result);
-
-      if (result && result.success) {
-        toast({
-          title: "Success",
-          description: `Room ${room.number} has been blocked successfully`
-        });
-        onSuccess();
-        onClose();
-      } else {
-        throw new Error(result?.error || 'Failed to block room in Google Sheets');
-      }
+      return;
     }
-  } catch (error: any) {
-    console.error('❌ Error blocking room:', error);
-    toast({
-      title: "Error",
-      description: error.message || "Failed to block room. Please try again.",
-      variant: "destructive"
-    });
-  } finally {
-    setLoading(false);
-  }
-};
+
+    if (!reason.trim()) {
+      toast({
+        title: "Error",
+        description: "Please provide a reason for blocking",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const payload = {
+        roomId: room.roomId,
+        roomNumber: String(room.number),
+        fromDate: format(dateRange.from, 'yyyy-MM-dd'),
+        toDate: format(dateRange.to, 'yyyy-MM-dd'),
+        reason,
+        blockedBy: blockedBy || 'Admin',
+          customerName: customerName || undefined  
+      };
+
+      console.log('📤 Block room payload:', payload);
+
+      if (userSource === 'database') {
+        // Call the new block-room endpoint
+        const token = localStorage.getItem('authToken');
+        const response = await fetch(`${NODE_BACKEND_URL}/bookings/block-room`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+        console.log('✅ Database response:', result);
+
+        if (response.ok && result.success) {
+          toast({
+            title: "Success",
+            description: `Room ${room.number} has been blocked successfully`
+          });
+          onSuccess();
+          onClose();
+        } else {
+          throw new Error(result.message || 'Failed to block room');
+        }
+      } else {
+        // Google Sheets - use JSONP
+        if (!spreadsheetId) {
+          throw new Error('No spreadsheet ID provided');
+        }
+
+        const params = new URLSearchParams();
+        params.append('action', 'blockRoom');
+        params.append('spreadsheetid', spreadsheetId);
+        params.append('roomId', String(room.roomId));
+        params.append('roomNumber', String(room.number));
+        params.append('fromDate', format(dateRange.from, 'yyyy-MM-dd'));
+        params.append('toDate', format(dateRange.to, 'yyyy-MM-dd'));
+        params.append('reason', reason);
+        params.append('blockedBy', blockedBy || 'Admin');
+
+        const scriptUrl = `${APPS_SCRIPT_URL}?${params.toString()}`;
+        console.log('📤 Calling Google Apps Script:', scriptUrl);
+
+        const result = await jsonpFetch<any>(scriptUrl);
+        console.log('✅ Google Sheets response:', result);
+
+        if (result && result.success) {
+          toast({
+            title: "Success",
+            description: `Room ${room.number} has been blocked successfully`
+          });
+          onSuccess();
+          onClose();
+        } else {
+          throw new Error(result?.error || 'Failed to block room in Google Sheets');
+        }
+      }
+    } catch (error: any) {
+      console.error('❌ Error blocking room:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to block room. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
@@ -254,6 +257,20 @@ const handleSubmit = async (e: React.FormEvent) => {
                 rows={3}
                 required
               />
+            </div>
+
+
+            <div className="space-y-2">
+              <Label htmlFor="customerName">Customer Name (Optional)</Label>
+              <Input
+                id="customerName"
+                placeholder="Enter customer name for this block"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Optional: Associate this block with a customer
+              </p>
             </div>
 
             {/* Blocked By */}

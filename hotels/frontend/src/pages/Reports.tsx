@@ -76,6 +76,12 @@ const Reports = () => {
     useEffect(() => {
         setSearchTerm('');
         setColumnFilters({});
+        const today = new Date().toISOString().split('T')[0];
+        setStartDate(today);
+        setEndDate(today);
+        setSelectedDate(today);
+        setSelectedMonth(new Date().getMonth() + 1);
+        setSelectedYear(new Date().getFullYear());
     }, [activeTab]);
 
     // Initial check on mount
@@ -106,9 +112,7 @@ const Reports = () => {
 
     // Date filters for reports
     const [startDate, setStartDate] = useState(() => {
-        const date = new Date();
-        date.setDate(1);
-        return date.toISOString().split('T')[0];
+        return new Date().toISOString().split('T')[0];
     });
     const [endDate, setEndDate] = useState(() => {
         const date = new Date();
@@ -132,7 +136,7 @@ const Reports = () => {
     const getFilteredData = (data: any[]) => {
         return data.filter(item => {
             // Global search
-            const matchesSearch = searchTerm === '' || Object.values(item).some(val => 
+            const matchesSearch = searchTerm === '' || Object.values(item).some(val =>
                 String(val).toLowerCase().includes(searchTerm.toLowerCase())
             );
 
@@ -697,7 +701,7 @@ const Reports = () => {
         };
 
         const filteredData = getFilteredData(functionRoomData);
-        
+
         const totalBookings = filteredData.length;
         const totalRevenue = filteredData.reduce((s, r) => s + getNumberValue(r.total_amount), 0);
         const totalAdvance = filteredData.reduce((s, r) => s + getNumberValue(r.advance_paid), 0);
@@ -715,7 +719,7 @@ const Reports = () => {
                         </Card>
                         <Card>
                             <CardContent className="p-3">
-                                <div className="text-xs text-muted-foreground">Total Revenue</div>
+                                <div className="text-xs text-muted-foreground">Total Amount</div>
                                 <div className="text-lg font-bold flex items-center">
                                     <IndianRupee className="h-4 w-4" />
                                     {formatCurrency(totalRevenue)}
@@ -724,7 +728,7 @@ const Reports = () => {
                         </Card>
                         <Card>
                             <CardContent className="p-3">
-                                <div className="text-xs text-muted-foreground">Advance Collected</div>
+                                <div className="text-xs text-muted-foreground">Paid Amount</div>
                                 <div className="text-lg font-bold flex items-center">
                                     <IndianRupee className="h-4 w-4" />
                                     {formatCurrency(totalAdvance)}
@@ -1280,10 +1284,10 @@ const Reports = () => {
                 <TableHead key={key} className={`font-bold ${!functionHallEnabled && key === 'function_revenue' ? 'opacity-50 grayscale' : ''}`}>
                     <div className="flex items-center gap-1">
                         {key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-                        <ColumnFilter 
-                            columnId={key} 
-                            label={key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')} 
-                            data={reportData} 
+                        <ColumnFilter
+                            columnId={key}
+                            label={key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                            data={reportData}
                         />
                     </div>
                 </TableHead>
@@ -1307,7 +1311,7 @@ const Reports = () => {
                             key.toLowerCase().includes('checkin') ||
                             key.toLowerCase().includes('checkout') ||
                             key.toLowerCase().includes('check_in') ||
-                            key.toLowerCase().includes('check_out')) && 
+                            key.toLowerCase().includes('check_out')) &&
                             // Only exclude exactly named count columns in Daily Occupancy
                             !(activeTab === 'daily_occupancy' && (key === 'check_in' || key === 'check_out'));
 
@@ -1334,13 +1338,13 @@ const Reports = () => {
                         // Handle number formatting
                         if (typeof value === 'number' && !isNaN(value)) {
                             // Check if it's an integer count field
-                            const isCountField = (activeTab === 'daily_occupancy' && (key === 'check_in' || key === 'check_out')) || 
-                                               key === 'total_rooms' || 
-                                               key === 'total rooms' ||
-                                               key === 'booked' || 
-                                               key === 'blocked' ||
-                                               key === 'out_of_order' ||
-                                               key === 'occupied_rooms';
+                            const isCountField = (activeTab === 'daily_occupancy' && (key === 'check_in' || key === 'check_out')) ||
+                                key === 'total_rooms' ||
+                                key === 'total rooms' ||
+                                key === 'booked' ||
+                                key === 'blocked' ||
+                                key === 'out_of_order' ||
+                                key === 'occupied_rooms';
 
                             if (isCountField) {
                                 return (
@@ -1353,7 +1357,7 @@ const Reports = () => {
 
                             const formattedValue =
                                 key === 'occupancy_rate' ? `${value.toFixed(2)}%` :
-                                    key === 'total_revenue' || key === 'avg_revenue_per_room' || key === 'amount' ||
+                                    key === 'total_amount' || key === 'avg_revenue_per_room' || key === 'amount' ||
                                         key === 'room_cost' || key === 'gst' || key === 'total' || key === 'net_profit' ||
                                         key === 'basic_salary' || key === 'allowances' || key === 'deductions' ||
                                         key === 'net_salary' || key === 'salary_per_month' || key === 'total_amount' ||
@@ -1610,7 +1614,7 @@ const Reports = () => {
                                     <span>Police Report</span>
                                 </TabsTrigger>
 
-                                 <TabsTrigger
+                                <TabsTrigger
                                     value="function_room"
                                     disabled={!functionHallEnabled}
                                     className={`
@@ -1766,8 +1770,8 @@ const Reports = () => {
                                 <Badge variant="outline" className="text-[10px] sm:text-xs shrink-0 px-1.5 h-5">
                                     {activeTab === 'police_report' ? policeReportData.length :
                                         activeTab === 'function_room' ? functionRoomData.length :
-                                        activeTab === 'daily_sales' ? (dailySalesData.bookings.length + dailySalesData.advanceBookings.length) :
-                                            reportData.length} records
+                                            activeTab === 'daily_sales' ? (dailySalesData.bookings.length + dailySalesData.advanceBookings.length) :
+                                                reportData.length} records
                                 </Badge>
                             </div>
 

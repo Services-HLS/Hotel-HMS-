@@ -4,6 +4,7 @@
 import { ReactNode, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { getCurrentUser } from '@/lib/storage';
+ import { clearAllUserData } from '@/lib/clearUserData';
 import { hasPermission, isAdmin } from '@/lib/permissions';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -28,6 +29,7 @@ import {
   Home,
   Building2,
   CalendarDays,
+  Ban,
 } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import Logo from '@/components/Logo';
@@ -229,6 +231,16 @@ const Layout = ({ children }: LayoutProps) => {
   };
 
   // Add this with your other useState declarations in Layout.tsx
+
+
+  // In Layout.tsx - REPLACE the handleLogout function with this:
+
+  // const handleLogout = () => {
+  //   console.log('🚪 Layout: Logging out user...');
+  //   clearAllUserData();
+  //  navigate('/login');
+  // };
+
   const [functionHallEnabled, setFunctionHallEnabled] = useState<boolean>(() => {
     // Get saved preference from localStorage
     const saved = localStorage.getItem('functionHallEnabled');
@@ -247,49 +259,6 @@ const Layout = ({ children }: LayoutProps) => {
       window.removeEventListener('functionHallToggle' as any, handleFunctionHallToggle);
     };
   }, []);
-
-
-  // ========== AUTO-LOGOUT ON INACTIVITY (30 MINS) ==========
-  useEffect(() => {
-    // 30 minutes in milliseconds
-    const INACTIVITY_TIMEOUT = 30 * 60 * 1000;
-    let timeoutId: NodeJS.Timeout;
-
-    const resetTimer = () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
-        console.log('🕒 Inactivity timeout reached (30 mins). Logging out...');
-        handleLogout();
-      }, INACTIVITY_TIMEOUT);
-    };
-
-    // Events that count as activity
-    const activityEvents = [
-      'mousedown',
-      'mousemove',
-      'keypress',
-      'scroll',
-      'touchstart',
-      'click'
-    ];
-
-    // Initialize timer
-    resetTimer();
-
-    // Add listeners
-    activityEvents.forEach(event => {
-      window.addEventListener(event, resetTimer);
-    });
-
-    // Cleanup
-    return () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      activityEvents.forEach(event => {
-        window.removeEventListener(event, resetTimer);
-      });
-    };
-  }, [navigate]); // navigate is stable, but adding it for completeness
-
 
   // Main navigation items (visible to all logged-in users with permissions)
   // const mainNavItems = [
@@ -382,8 +351,8 @@ const Layout = ({ children }: LayoutProps) => {
       icon: Calendar,
       label: 'My Bookings',
       requires: 'view_bookings'
-    },   
-  
+    },
+
     {
       path: '/dashboard',
       icon: LayoutDashboard,
@@ -442,6 +411,12 @@ const Layout = ({ children }: LayoutProps) => {
 
   // Other navigation items (visible based on permissions)
   const otherNavItems = [
+    {
+    path: '/refund-management',
+    icon: Ban,
+    label: 'Cancellations & Refunds',
+    requires: 'view_dashboard' // Or create a new permission
+  },
     {
       path: '/contact',
       icon: HelpCircle,
@@ -602,8 +577,8 @@ const Layout = ({ children }: LayoutProps) => {
               {active && !isDisabled && (
                 <div className="ml-auto w-2 h-2 rounded-full bg-primary-foreground"></div>
               )}
-             
-              
+
+
             </button>
           );
         })}
@@ -854,7 +829,7 @@ const Layout = ({ children }: LayoutProps) => {
                             {active && !isDisabled && (
                               <div className="ml-auto w-2 h-2 rounded-full bg-primary-foreground"></div>
                             )}
-                          
+
                           </button>
                         );
                       })}

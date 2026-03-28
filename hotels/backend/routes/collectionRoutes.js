@@ -9,15 +9,33 @@ const { authenticate, authorize } = require('../middleware/auth');
 router.use(authenticate);
 
 // GET collections
-router.get('/', 
-  authorize(['admin', 'staff'], ['view_collections']), 
+router.get('/',
+  authorize(['admin', 'staff'], ['view_collections']),
   collectionController.getCollections
+);
+
+// GET export collections
+router.get('/export',
+  authorize(['admin', 'staff'], ['view_collections']),
+  collectionController.exportCollections
 );
 
 // GET cash bookings
 router.get('/cash-bookings',
   authorize(['admin', 'staff'], ['view_collections']),
   collectionController.getCashBookings
+);
+
+// GET handover history (ledger)
+router.get('/handovers',
+  authorize(['admin', 'staff'], ['view_collections']),
+  collectionController.getHandoverHistory
+);
+
+// GET unique handover types
+router.get('/handover-types',
+  authorize(['admin', 'staff'], ['view_collections']),
+  collectionController.getHandoverTypes
 );
 
 // POST create new collection
@@ -30,6 +48,12 @@ router.post('/',
 router.post('/:id/handover',
   authorize(['admin', 'staff'], ['manage_collections']),
   collectionController.handoverCash
+);
+
+// POST bulk handover (Total Balance)
+router.post('/bulk-handover',
+  authorize(['admin', 'staff'], ['manage_collections']),
+  collectionController.bulkHandover
 );
 
 // GET test endpoint

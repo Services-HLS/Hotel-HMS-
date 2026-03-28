@@ -1,3 +1,4 @@
+
 const { pool } = require('../config/database');
 const PDFDocument = require('pdfkit');
 
@@ -6,22 +7,66 @@ class FunctionRoomController {
   // INTERNAL HELPER METHODS
   // ===========================================
 
-  // Internal availability check - RENAMED and ARROW FUNCTION
-  checkAvailabilityInternal = async (roomId, hotelId, date, startTime, endTime, excludeBookingId = null) => {
+  // Update checkAvailabilityInternal to handle date ranges
+  // In functionRoomController.js - update this method
+  checkAvailabilityInternal = async (roomId, hotelId, checkInDate, checkOutDate, startTime, endTime, excludeBookingId = null) => {
     try {
-      const query = `
-        SELECT id FROM function_bookings
-        WHERE function_room_id = ?
-        AND hotel_id = ?
-        AND booking_date = ?
-        AND status IN ('confirmed', 'pending')
-        AND NOT (end_time <= ? OR start_time >= ?)
-        AND (? IS NULL OR id != ?)
-      `;
+      // Ensure all parameters are provided and not undefined
+      if (!roomId || !hotelId || !checkInDate || !checkOutDate || !startTime || !endTime) {
+        console.error('❌ Missing required parameters for availability check:', { roomId, hotelId, checkInDate, checkOutDate, startTime, endTime });
+        return false;
+      }
 
-      const [rows] = await pool.execute(query, [
-        roomId, hotelId, date, startTime, endTime, excludeBookingId, excludeBookingId
-      ]);
+      console.log('🔍 Checking availability with:', {
+        roomId, hotelId, checkInDate, checkOutDate, startTime, endTime, excludeBookingId
+      });
+
+      // FIXED SQL QUERY - This correctly handles date ranges and single day checks
+      const query = `
+      SELECT id FROM function_bookings
+      WHERE function_room_id = ?
+      AND hotel_id = ?
+      AND status IN ('confirmed', 'pending')
+      AND (
+        -- Case 1: New booking starts during existing booking's date range
+        (booking_date <= ? AND end_date >= ?)
+        OR
+        -- Case 2: New booking ends during existing booking's date range
+        (booking_date <= ? AND end_date >= ?)
+        OR
+        -- Case 3: New booking completely contains existing booking
+        (booking_date >= ? AND end_date <= ?)
+        OR
+        -- Case 4: SAME DAY - Check for time overlap when dates are the same
+        (booking_date = ? AND ? = booking_date AND (
+          (start_time < ? AND end_time > ?)  -- Time overlap condition
+        ))
+      )
+      AND (? IS NULL OR id != ?)
+    `;
+
+      const params = [
+        roomId,
+        hotelId,
+        checkInDate, checkInDate,  // Case 1: existing booking starts during new booking
+        checkOutDate, checkOutDate, // Case 2: existing booking ends during new booking
+        checkInDate, checkOutDate,  // Case 3: existing booking is within new booking
+        checkInDate, checkInDate,   // Case 4: same date check
+        endTime, startTime,         // Time overlap params
+        excludeBookingId, excludeBookingId
+      ];
+
+      // Replace any undefined with null
+      const safeParams = params.map(p => p === undefined ? null : p);
+
+      console.log('📝 SQL Query params:', safeParams);
+
+      const [rows] = await pool.execute(query, safeParams);
+
+      console.log(`✅ Availability check result: ${rows.length} conflicting bookings found`);
+      if (rows.length > 0) {
+        console.log('❌ Conflicting booking IDs:', rows.map(r => r.id));
+      }
 
       return rows.length === 0;
     } catch (error) {
@@ -30,7 +75,7 @@ class FunctionRoomController {
     }
   }
 
-  // Helper: Calculate hours between two times - ARROW FUNCTION
+  // Helper: Calculate hours between two times
   calculateHours = (startTime, endTime) => {
     const start = new Date(`2000-01-01T${startTime}`);
     const end = new Date(`2000-01-01T${endTime}`);
@@ -39,7 +84,7 @@ class FunctionRoomController {
   }
 
   // ===========================================
-  // FUNCTION ROOM MANAGEMENT - ARROW FUNCTIONS
+  // FUNCTION ROOM MANAGEMENT
   // ===========================================
 
   // Create a new function room
@@ -415,11 +460,227 @@ class FunctionRoomController {
   }
 
   // ===========================================
-  // FUNCTION ROOM BOOKING MANAGEMENT - ARROW FUNCTIONS
+  // FUNCTION ROOM BOOKING MANAGEMENT
   // ===========================================
 
-  // Create function room booking
-  createFunctionBooking = async (req, res) => {
+  // Create function room booking with rooms
+  // createFunctionBookingWithRooms = async (req, res) => {
+  //   try {
+  //     const hotelId = req.user.hotel_id;
+  //     const userId = req.user.userId;
+  //     const {
+  //       function_room_id,
+  //       event_name,
+  //       event_type,
+  //       check_in_date,
+  //       check_out_date,
+  //       start_time,
+  //       end_time,
+  //       setup_time,
+  //       breakdown_time,
+  //       rate_type,
+  //       rate_amount,
+  //       subtotal,
+  //       service_charge = 0,
+  //       gst = 0,
+  //       catering_charges = 0,
+  //       decoration_charges = 0,
+  //       other_charges = 0,
+  //       discount = 0,
+  //       total_amount,
+  //       advance_paid = 0,
+  //       guests_expected,
+  //       payment_method,
+  //       payment_status = 'pending',
+  //       transaction_id,
+  //       status = 'confirmed',
+  //       customer_name,
+  //       customer_phone,
+  //       customer_email,
+  //       customer_address,
+  //       special_requests,
+  //       catering_requirements,
+  //       setup_requirements,
+  //       customer_id = null,
+  //       has_room_bookings = false,
+  //       room_booking_ids = null,
+  //       total_rooms_booked = 0
+  //     } = req.body;
+
+  //     // Validate required fields
+  //     if (!function_room_id || !event_name || !check_in_date || !check_out_date || !start_time || !end_time || !customer_name || !customer_phone) {
+  //       return res.status(400).json({
+  //         success: false,
+  //         error: 'MISSING_FIELDS',
+  //         message: 'Missing required fields'
+  //       });
+  //     }
+
+  //     // Validate dates
+  //     if (new Date(check_out_date) < new Date(check_in_date)) {
+  //       return res.status(400).json({
+  //         success: false,
+  //         error: 'INVALID_DATES',
+  //         message: 'Check-out date cannot be before check-in date'
+  //       });
+  //     }
+
+  //     // Check room availability for the entire date range
+  //     const isAvailable = await this.checkAvailabilityInternal(
+  //       function_room_id,
+  //       hotelId,
+  //       check_in_date,
+  //       check_out_date,
+  //       start_time,
+  //       end_time
+  //     );
+
+  //     if (!isAvailable) {
+  //       return res.status(400).json({
+  //         success: false,
+  //         error: 'ROOM_NOT_AVAILABLE',
+  //         message: 'Function room is not available for the selected date and time range'
+  //       });
+  //     }
+
+  //     // Generate booking reference
+  //     const bookingReference = `EVT-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 1000)}`;
+
+  //     // Generate invoice number
+  //     const invoiceNumber = `INV-${bookingReference}`;
+
+  //     // Calculate total hours
+  //     const totalHours = this.calculateHours(start_time, end_time);
+
+  //     // Parse room booking IDs if provided
+  //     let roomBookingIdsArray = null;
+  //     if (room_booking_ids) {
+  //       try {
+  //         roomBookingIdsArray = typeof room_booking_ids === 'string'
+  //           ? JSON.parse(room_booking_ids)
+  //           : room_booking_ids;
+  //       } catch (e) {
+  //         console.error('Error parsing room_booking_ids:', e);
+  //       }
+  //     }
+
+  //     // Clean SQL query - make sure there are no hidden characters
+  //     const sql = `INSERT INTO function_bookings (
+  //     hotel_id, function_room_id, customer_id, booking_reference,
+  //     invoice_number, event_name, event_type, booking_date, end_date, start_time, end_time,
+  //     setup_time, breakdown_time, total_hours, rate_type, rate_amount,
+  //     subtotal, service_charge, gst, catering_charges, decoration_charges,
+  //     other_charges, discount, total_amount, advance_paid,
+  //     guests_expected, guests_attended, payment_method, payment_status, transaction_id,
+  //     status, cancellation_reason, customer_name, customer_phone, customer_email,
+  //     customer_address, special_requests, catering_requirements,
+  //     setup_requirements, created_by, has_room_bookings, 
+  //     room_booking_ids, total_rooms_booked
+  //   ) VALUES (${Array(43).fill('?').join(', ')})`;
+
+  //     const values = [
+  //       hotelId,
+  //       function_room_id,
+  //       customer_id,
+  //       bookingReference,
+  //       invoiceNumber,
+  //       event_name,
+  //       event_type,
+  //       check_in_date,
+  //       check_out_date,
+  //       start_time,
+  //       end_time,
+  //       setup_time || null,
+  //       breakdown_time || null,
+  //       totalHours,
+  //       rate_type,
+  //       rate_amount,
+  //       subtotal,
+  //       service_charge,
+  //       gst,
+  //       catering_charges,
+  //       decoration_charges,
+  //       other_charges,
+  //       discount,
+  //       total_amount,
+  //       advance_paid,
+  //       guests_expected || null,
+  //       null, // guests_attended
+  //       payment_method || 'cash',
+  //       payment_status,
+  //       transaction_id || null,
+  //       status,
+  //       null, // cancellation_reason
+  //       customer_name,
+  //       customer_phone,
+  //       customer_email || null,
+  //       customer_address || null,
+  //       special_requests || null,
+  //       catering_requirements || null,
+  //       setup_requirements || null,
+  //       userId,
+  //       has_room_bookings ? 1 : 0, // Convert boolean to tinyint
+  //       roomBookingIdsArray ? JSON.stringify(roomBookingIdsArray) : null,
+  //       total_rooms_booked || 0
+  //     ];
+
+  //     console.log('SQL:', sql);
+  //     console.log('Values count:', values.length);
+
+  //     const [result] = await pool.execute(sql, values);
+
+  //     // Create junction entries if room bookings exist
+  //     if (has_room_bookings && roomBookingIdsArray && roomBookingIdsArray.length > 0) {
+  //       for (const roomBookingId of roomBookingIdsArray) {
+  //         await pool.execute(
+  //           `INSERT INTO function_room_bookings_junction (function_booking_id, room_booking_id)
+  //          VALUES (?, ?)`,
+  //           [result.insertId, roomBookingId]
+  //         );
+  //       }
+  //     }
+
+  //     // Update room status if confirmed
+  //     if (status === 'confirmed') {
+  //       await pool.execute(
+  //         'UPDATE function_rooms SET status = ? WHERE id = ? AND hotel_id = ?',
+  //         ['booked', function_room_id, hotelId]
+  //       );
+  //     }
+
+  //     res.status(201).json({
+  //       success: true,
+  //       message: has_room_bookings
+  //         ? 'Function booking with accommodation created successfully'
+  //         : 'Function booking created successfully',
+  //       data: {
+  //         id: result.insertId,
+  //         booking_reference: bookingReference,
+  //         invoice_number: invoiceNumber,
+  //         check_in_date,
+  //         check_out_date,
+  //         start_time,
+  //         end_time,
+  //         total_amount,
+  //         advance_paid,
+  //         balance_due: total_amount - advance_paid,
+  //         has_room_bookings,
+  //         total_rooms_booked
+  //       }
+  //     });
+  //   } catch (error) {
+  //     console.error('❌ Create function booking with rooms error:', error);
+  //     res.status(500).json({
+  //       success: false,
+  //       error: 'SERVER_ERROR',
+  //       message: error.message
+  //     });
+  //   }
+  // }
+
+  // In functionRoomController.js - update createFunctionBookingWithRooms method
+
+  createFunctionBookingWithRooms = async (req, res) => {
     try {
       const hotelId = req.user.hotel_id;
       const userId = req.user.userId;
@@ -427,7 +688,8 @@ class FunctionRoomController {
         function_room_id,
         event_name,
         event_type,
-        booking_date,
+        check_in_date,
+        check_out_date,
         start_time,
         end_time,
         setup_time,
@@ -447,7 +709,7 @@ class FunctionRoomController {
         payment_method,
         payment_status = 'pending',
         transaction_id,
-        status = 'pending',
+        status = 'confirmed',
         customer_name,
         customer_phone,
         customer_email,
@@ -455,11 +717,14 @@ class FunctionRoomController {
         special_requests,
         catering_requirements,
         setup_requirements,
-        customer_id = null
+        customer_id = null,
+        has_room_bookings = false,
+        room_booking_ids = null,
+        total_rooms_booked = 0
       } = req.body;
 
       // Validate required fields
-      if (!function_room_id || !event_name || !booking_date || !start_time || !end_time || !customer_name || !customer_phone) {
+      if (!function_room_id || !event_name || !check_in_date || !check_out_date || !start_time || !end_time || !customer_name || !customer_phone) {
         return res.status(400).json({
           success: false,
           error: 'MISSING_FIELDS',
@@ -467,11 +732,21 @@ class FunctionRoomController {
         });
       }
 
-      // Check room availability
+      // Validate dates
+      if (new Date(check_out_date) < new Date(check_in_date)) {
+        return res.status(400).json({
+          success: false,
+          error: 'INVALID_DATES',
+          message: 'Check-out date cannot be before check-in date'
+        });
+      }
+
+      // Check room availability for the entire date range
       const isAvailable = await this.checkAvailabilityInternal(
         function_room_id,
         hotelId,
-        booking_date,
+        check_in_date,
+        check_out_date,
         start_time,
         end_time
       );
@@ -480,63 +755,264 @@ class FunctionRoomController {
         return res.status(400).json({
           success: false,
           error: 'ROOM_NOT_AVAILABLE',
-          message: 'Function room is not available for the selected date and time'
+          message: 'Function room is not available for the selected date and time range'
         });
       }
 
       // Generate booking reference
-      const bookingReference = `FNC-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 1000)}`;
+      const bookingReference = `EVT-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 1000)}`;
+
+      // Generate invoice number
+      const invoiceNumber = `INV-${bookingReference}`;
 
       // Calculate total hours
       const totalHours = this.calculateHours(start_time, end_time);
 
-      // Create booking
-      const [result] = await pool.execute(
-        `INSERT INTO function_bookings (
-          hotel_id, function_room_id, customer_id, booking_reference,
-          event_name, event_type, booking_date, start_time, end_time,
-          setup_time, breakdown_time, total_hours, rate_type, rate_amount,
-          subtotal, service_charge, gst, catering_charges, decoration_charges,
-          other_charges, discount, total_amount, advance_paid,
-          guests_expected, payment_method, payment_status, transaction_id,
-          status, customer_name, customer_phone, customer_email,
-          customer_address, special_requests, catering_requirements,
-          setup_requirements, created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          hotelId, function_room_id, customer_id, bookingReference,
-          event_name, event_type, booking_date, start_time, end_time,
-          setup_time || null, breakdown_time || null, totalHours, rate_type, rate_amount,
-          subtotal, service_charge, gst, catering_charges, decoration_charges,
-          other_charges, discount, total_amount, advance_paid,
-          guests_expected || null, payment_method || 'cash', payment_status, transaction_id || null,
-          status, customer_name, customer_phone, customer_email || null,
-          customer_address || null, special_requests || null, catering_requirements || null,
-          setup_requirements || null, userId
-        ]
-      );
-
-      // Update room status if confirmed
-      if (status === 'confirmed') {
-        await pool.execute(
-          'UPDATE function_rooms SET status = ? WHERE id = ? AND hotel_id = ?',
-          ['booked', function_room_id, hotelId]
-        );
+      // Parse room booking IDs if provided
+      let roomBookingIdsArray = null;
+      if (room_booking_ids) {
+        try {
+          roomBookingIdsArray = typeof room_booking_ids === 'string'
+            ? JSON.parse(room_booking_ids)
+            : room_booking_ids;
+        } catch (e) {
+          console.error('Error parsing room_booking_ids:', e);
+        }
       }
 
-      res.status(201).json({
-        success: true,
-        message: 'Function booking created successfully',
-        data: {
-          id: result.insertId,
-          booking_reference: bookingReference,
+      // Determine payment status based on advance payment
+      // If advance_paid equals total_amount, it's completed
+      // Otherwise it's pending or partial
+      let finalPaymentStatus = payment_status;
+      if (advance_paid >= total_amount) {
+        finalPaymentStatus = 'completed';
+      } else if (advance_paid > 0) {
+        finalPaymentStatus = 'pending'; // or 'partial' if you have that status
+      }
+
+      // Start a transaction to ensure both inserts succeed
+      const connection = await pool.getConnection();
+      await connection.beginTransaction();
+
+      try {
+        // Clean SQL query - make sure there are no hidden characters
+        const sql = `INSERT INTO function_bookings (
+      hotel_id, function_room_id, customer_id, booking_reference,
+      invoice_number, event_name, event_type, booking_date, end_date, start_time, end_time,
+      setup_time, breakdown_time, total_hours, rate_type, rate_amount,
+      subtotal, service_charge, gst, catering_charges, decoration_charges,
+      other_charges, discount, total_amount, advance_paid,
+      guests_expected, guests_attended, payment_method, payment_status, transaction_id,
+      status, cancellation_reason, customer_name, customer_phone, customer_email,
+      customer_address, special_requests, catering_requirements,
+      setup_requirements, created_by, has_room_bookings, 
+      room_booking_ids, total_rooms_booked
+    ) VALUES (${Array(43).fill('?').join(', ')})`;
+
+        const values = [
+          hotelId,
+          function_room_id,
+          customer_id,
+          bookingReference,
+          invoiceNumber,
+          event_name,
+          event_type,
+          check_in_date,
+          check_out_date,
+          start_time,
+          end_time,
+          setup_time || null,
+          breakdown_time || null,
+          totalHours,
+          rate_type,
+          rate_amount,
+          subtotal,
+          service_charge,
+          gst,
+          catering_charges,
+          decoration_charges,
+          other_charges,
+          discount,
           total_amount,
           advance_paid,
-          balance_due: total_amount - advance_paid
+          guests_expected || null,
+          null, // guests_attended
+          payment_method || 'cash',
+          finalPaymentStatus, // Use the determined payment status
+          transaction_id || null,
+          status,
+          null, // cancellation_reason
+          customer_name,
+          customer_phone,
+          customer_email || null,
+          customer_address || null,
+          special_requests || null,
+          catering_requirements || null,
+          setup_requirements || null,
+          userId,
+          has_room_bookings ? 1 : 0,
+          roomBookingIdsArray ? JSON.stringify(roomBookingIdsArray) : null,
+          total_rooms_booked || 0
+        ];
+
+        console.log('SQL:', sql);
+        console.log('Values count:', values.length);
+
+        const [result] = await connection.execute(sql, values);
+
+        // Insert into function_booking_amounts table
+        // Determine transaction type based on payment
+        let transactionType = 'payment';
+        let transactionAmount = total_amount;
+
+        // If advance paid is less than total, record the advance payment
+        if (advance_paid > 0 && advance_paid < total_amount) {
+          transactionType = 'advance';
+          transactionAmount = advance_paid;
+        }
+
+        // Insert into amount tracking table
+        const [amountResult] = await connection.execute(
+          `INSERT INTO function_booking_amounts (
+          function_booking_id, hotel_id, transaction_type, payment_method,
+          transaction_amount, transaction_reference, description, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            result.insertId,
+            hotelId,
+            transactionType,
+            payment_method || 'cash',
+            transactionAmount,
+            transaction_id || null,
+            transactionType === 'advance' ? 'Advance payment received' : 'Full payment received',
+            userId
+          ]
+        );
+
+        console.log(`💰 Transaction recorded: ${transactionType} of ₹${transactionAmount}`);
+
+        // Create junction entries if room bookings exist
+        if (has_room_bookings && roomBookingIdsArray && roomBookingIdsArray.length > 0) {
+          for (const roomBookingId of roomBookingIdsArray) {
+            await connection.execute(
+              `INSERT INTO function_room_bookings_junction (function_booking_id, room_booking_id)
+           VALUES (?, ?)`,
+              [result.insertId, roomBookingId]
+            );
+          }
+        }
+
+        // Update room status if confirmed
+        if (status === 'confirmed') {
+          await connection.execute(
+            'UPDATE function_rooms SET status = ? WHERE id = ? AND hotel_id = ?',
+            ['booked', function_room_id, hotelId]
+          );
+        }
+
+        // Commit the transaction
+        await connection.commit();
+
+        res.status(201).json({
+          success: true,
+          message: has_room_bookings
+            ? 'Function booking with accommodation created successfully'
+            : 'Function booking created successfully',
+          data: {
+            id: result.insertId,
+            booking_reference: bookingReference,
+            invoice_number: invoiceNumber,
+            check_in_date,
+            check_out_date,
+            start_time,
+            end_time,
+            total_amount,
+            advance_paid,
+            balance_due: total_amount - advance_paid,
+            payment_status: finalPaymentStatus,
+            has_room_bookings,
+            total_rooms_booked,
+            transaction: {
+              id: amountResult.insertId,
+              type: transactionType,
+              amount: transactionAmount,
+              method: payment_method
+            }
+          }
+        });
+
+      } catch (error) {
+        await connection.rollback();
+        throw error;
+      } finally {
+        connection.release();
+      }
+
+    } catch (error) {
+      console.error('❌ Create function booking with rooms error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'SERVER_ERROR',
+        message: error.message
+      });
+    }
+  }
+  // Check function room availability - SINGLE VERSION
+  // In functionRoomController.js, ensure you have this method (the date range version):
+  checkFunctionRoomAvailability = async (req, res) => {
+    try {
+      const {
+        room_id,
+        check_in_date,
+        check_out_date,
+        start_time,
+        end_time,
+        exclude_booking_id
+      } = req.body;
+
+      const hotelId = req.user.hotel_id;
+
+      console.log('🔍 API Checking availability:', {
+        room_id,
+        check_in_date,
+        check_out_date,
+        start_time,
+        end_time,
+        hotelId
+      });
+
+      // Validate required fields
+      if (!room_id || !check_in_date || !check_out_date || !start_time || !end_time) {
+        return res.status(400).json({
+          success: false,
+          error: 'MISSING_FIELDS',
+          message: 'Missing required fields for availability check'
+        });
+      }
+
+      const isAvailable = await this.checkAvailabilityInternal(
+        room_id,
+        hotelId,
+        check_in_date,
+        check_out_date,
+        start_time,
+        end_time,
+        exclude_booking_id
+      );
+
+      res.json({
+        success: true,
+        data: {
+          available: isAvailable,
+          room_id,
+          check_in_date,
+          check_out_date,
+          start_time,
+          end_time
         }
       });
     } catch (error) {
-      console.error('❌ Create function booking error:', error);
+      console.error('❌ API Check availability error:', error);
       res.status(500).json({
         success: false,
         error: 'SERVER_ERROR',
@@ -630,6 +1106,140 @@ class FunctionRoomController {
     }
   }
 
+  // Get function booking with associated room bookings
+  getFunctionBookingWithRooms = async (req, res) => {
+    try {
+      const { id } = req.params;
+      const hotelId = req.user.hotel_id;
+
+      // Get function booking
+      const [bookings] = await pool.execute(
+        `SELECT fb.*, fr.room_number, fr.name as room_name, fr.capacity, fr.base_price
+         FROM function_bookings fb
+         LEFT JOIN function_rooms fr ON fb.function_room_id = fr.id
+         WHERE fb.id = ? AND fb.hotel_id = ?`,
+        [id, hotelId]
+      );
+
+      if (bookings.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'BOOKING_NOT_FOUND',
+          message: 'Function booking not found'
+        });
+      }
+
+      const booking = bookings[0];
+
+      // Get associated room bookings if any
+      let roomBookings = [];
+      if (booking.has_room_bookings && booking.room_booking_ids) {
+        const roomBookingIds = JSON.parse(booking.room_booking_ids);
+
+        if (roomBookingIds.length > 0) {
+          const placeholders = roomBookingIds.map(() => '?').join(',');
+          const [roomBookingsData] = await pool.execute(
+            `SELECT b.*, r.room_number, r.type as room_type
+             FROM bookings b
+             LEFT JOIN rooms r ON b.room_id = r.id
+             WHERE b.id IN (${placeholders}) AND b.hotel_id = ?`,
+            [...roomBookingIds, hotelId]
+          );
+          roomBookings = roomBookingsData;
+        }
+      }
+
+      res.json({
+        success: true,
+        data: {
+          ...booking,
+          room_bookings: roomBookings
+        }
+      });
+    } catch (error) {
+      console.error('❌ Get function booking with rooms error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'SERVER_ERROR',
+        message: error.message
+      });
+    }
+  }
+
+  // Get all function bookings with room bookings
+  getAllFunctionBookingsWithRooms = async (req, res) => {
+    try {
+      const hotelId = req.user.hotel_id;
+      const { date, status, room_id } = req.query;
+
+      let query = `
+        SELECT fb.*, fr.room_number, fr.name as room_name, fr.capacity
+        FROM function_bookings fb
+        LEFT JOIN function_rooms fr ON fb.function_room_id = fr.id
+        WHERE fb.hotel_id = ?
+      `;
+
+      const params = [hotelId];
+
+      if (date) {
+        query += ` AND fb.booking_date = ?`;
+        params.push(date);
+      }
+
+      if (status) {
+        query += ` AND fb.status = ?`;
+        params.push(status);
+      }
+
+      if (room_id) {
+        query += ` AND fb.function_room_id = ?`;
+        params.push(room_id);
+      }
+
+      query += ` ORDER BY fb.booking_date DESC, fb.start_time`;
+
+      const [bookings] = await pool.execute(query, params);
+
+      // Get room bookings for each function booking
+      for (const booking of bookings) {
+        if (booking.has_room_bookings && booking.room_booking_ids) {
+          try {
+            const roomBookingIds = JSON.parse(booking.room_booking_ids);
+            if (roomBookingIds.length > 0) {
+              const placeholders = roomBookingIds.map(() => '?').join(',');
+              const [roomBookingsData] = await pool.execute(
+                `SELECT b.id, b.room_id, r.room_number, r.type as room_type, 
+                        b.from_date, b.to_date, b.total as amount
+                 FROM bookings b
+                 LEFT JOIN rooms r ON b.room_id = r.id
+                 WHERE b.id IN (${placeholders}) AND b.hotel_id = ?`,
+                [...roomBookingIds, hotelId]
+              );
+              booking.room_bookings = roomBookingsData;
+            }
+          } catch (e) {
+            booking.room_bookings = [];
+          }
+        } else {
+          booking.room_bookings = [];
+        }
+      }
+
+      res.json({
+        success: true,
+        data: bookings,
+        count: bookings.length
+      });
+    } catch (error) {
+      console.error('❌ Get all function bookings with rooms error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'SERVER_ERROR',
+        message: error.message
+      });
+    }
+  }
+
   // Update function booking
   updateFunctionBooking = async (req, res) => {
     try {
@@ -654,18 +1264,20 @@ class FunctionRoomController {
       const currentBooking = currentBookings[0];
 
       // If date/time/room changed, check availability
-      if ((updates.booking_date || updates.start_time || updates.end_time || updates.function_room_id) &&
+      if ((updates.booking_date || updates.end_date || updates.start_time || updates.end_time || updates.function_room_id) &&
         updates.status !== 'cancelled') {
 
         const checkRoomId = updates.function_room_id || currentBooking.function_room_id;
-        const checkDate = updates.booking_date || currentBooking.booking_date;
+        const checkInDate = updates.booking_date || currentBooking.booking_date;
+        const checkOutDate = updates.end_date || currentBooking.end_date || currentBooking.booking_date;
         const checkStartTime = updates.start_time || currentBooking.start_time;
         const checkEndTime = updates.end_time || currentBooking.end_time;
 
         const isAvailable = await this.checkAvailabilityInternal(
           checkRoomId,
           hotelId,
-          checkDate,
+          checkInDate,
+          checkOutDate,
           checkStartTime,
           checkEndTime,
           id
@@ -686,7 +1298,7 @@ class FunctionRoomController {
 
       const allowedFields = [
         'function_room_id', 'customer_id', 'event_name', 'event_type',
-        'booking_date', 'start_time', 'end_time', 'setup_time', 'breakdown_time',
+        'booking_date', 'end_date', 'start_time', 'end_time', 'setup_time', 'breakdown_time',
         'rate_type', 'rate_amount', 'subtotal', 'service_charge', 'gst',
         'catering_charges', 'decoration_charges', 'other_charges', 'discount',
         'total_amount', 'advance_paid', 'guests_expected', 'guests_attended',
@@ -740,46 +1352,152 @@ class FunctionRoomController {
   }
 
   // Update payment status
+  // updateFunctionBookingPayment = async (req, res) => {
+  //   try {
+  //     const { id } = req.params;
+  //     const hotelId = req.user.hotel_id;
+  //     const { payment_status, transaction_id, advance_paid } = req.body;
+
+  //     const updates = [];
+  //     const values = [];
+
+  //     if (payment_status) {
+  //       updates.push('payment_status = ?');
+  //       values.push(payment_status);
+  //     }
+
+  //     if (transaction_id) {
+  //       updates.push('transaction_id = ?');
+  //       values.push(transaction_id);
+  //     }
+
+  //     if (advance_paid !== undefined) {
+  //       updates.push('advance_paid = ?');
+  //       values.push(advance_paid);
+  //     }
+
+  //     if (updates.length === 0) {
+  //       return res.status(400).json({
+  //         success: false,
+  //         error: 'NO_UPDATES',
+  //         message: 'No fields to update'
+  //       });
+  //     }
+
+  //     values.push(id, hotelId);
+
+  //     const [result] = await pool.execute(
+  //       `UPDATE function_bookings SET ${updates.join(', ')} WHERE id = ? AND hotel_id = ?`,
+  //       values
+  //     );
+
+  //     if (result.affectedRows === 0) {
+  //       return res.status(404).json({
+  //         success: false,
+  //         error: 'BOOKING_NOT_FOUND',
+  //         message: 'Function booking not found'
+  //       });
+  //     }
+
+  //     res.json({
+  //       success: true,
+  //       message: 'Payment status updated successfully'
+  //     });
+  //   } catch (error) {
+  //     console.error('❌ Update payment status error:', error);
+  //     res.status(500).json({
+  //       success: false,
+  //       error: 'SERVER_ERROR',
+  //       message: error.message
+  //     });
+  //   }
+  // }
+
+  // Update payment status
+  // updateFunctionBookingPayment = async (req, res) => {
+  //   try {
+  //     const { id } = req.params;
+  //     const hotelId = req.user.hotel_id;
+  //     const { payment_status, transaction_id, advance_paid } = req.body;
+
+  //     const updates = [];
+  //     const values = [];
+
+  //     if (payment_status) {
+  //       updates.push('payment_status = ?');
+  //       values.push(payment_status);
+  //     }
+
+  //     if (transaction_id) {
+  //       updates.push('transaction_id = ?');
+  //       values.push(transaction_id);
+  //     }
+
+  //     if (advance_paid !== undefined) {
+  //       updates.push('advance_paid = ?');
+  //       values.push(advance_paid);
+  //       // DON'T try to update balance_due - it's automatic!
+  //     }
+
+  //     if (updates.length === 0) {
+  //       return res.status(400).json({
+  //         success: false,
+  //         error: 'NO_UPDATES',
+  //         message: 'No fields to update'
+  //       });
+  //     }
+
+  //     values.push(id, hotelId);
+
+  //     // Simple update without balance_due
+  //     const query = `UPDATE function_bookings SET ${updates.join(', ')} WHERE id = ? AND hotel_id = ?`;
+
+  //     const [result] = await pool.execute(query, values);
+
+  //     if (result.affectedRows === 0) {
+  //       return res.status(404).json({
+  //         success: false,
+  //         error: 'BOOKING_NOT_FOUND',
+  //         message: 'Function booking not found'
+  //       });
+  //     }
+
+  //     // Get the updated booking
+  //     const [updatedBooking] = await pool.execute(
+  //       'SELECT * FROM function_bookings WHERE id = ? AND hotel_id = ?',
+  //       [id, hotelId]
+  //     );
+
+  //     res.json({
+  //       success: true,
+  //       message: 'Payment status updated successfully',
+  //       data: updatedBooking[0]
+  //     });
+
+  //   } catch (error) {
+  //     console.error('❌ Update payment status error:', error);
+  //     res.status(500).json({
+  //       success: false,
+  //       error: 'SERVER_ERROR',
+  //       message: error.message
+  //     });
+  //   }
+  // }
+  // Update payment status and record payment
   updateFunctionBookingPayment = async (req, res) => {
     try {
       const { id } = req.params;
       const hotelId = req.user.hotel_id;
+      const userId = req.user.userId;
       const { payment_status, transaction_id, advance_paid } = req.body;
 
-      const updates = [];
-      const values = [];
-
-      if (payment_status) {
-        updates.push('payment_status = ?');
-        values.push(payment_status);
-      }
-
-      if (transaction_id) {
-        updates.push('transaction_id = ?');
-        values.push(transaction_id);
-      }
-
-      if (advance_paid !== undefined) {
-        updates.push('advance_paid = ?');
-        values.push(advance_paid);
-      }
-
-      if (updates.length === 0) {
-        return res.status(400).json({
-          success: false,
-          error: 'NO_UPDATES',
-          message: 'No fields to update'
-        });
-      }
-
-      values.push(id, hotelId);
-
-      const [result] = await pool.execute(
-        `UPDATE function_bookings SET ${updates.join(', ')} WHERE id = ? AND hotel_id = ?`,
-        values
+      // Get current booking to know the total amount
+      const [bookings] = await pool.execute(
+        'SELECT * FROM function_bookings WHERE id = ? AND hotel_id = ?',
+        [id, hotelId]
       );
 
-      if (result.affectedRows === 0) {
+      if (bookings.length === 0) {
         return res.status(404).json({
           success: false,
           error: 'BOOKING_NOT_FOUND',
@@ -787,10 +1505,121 @@ class FunctionRoomController {
         });
       }
 
-      res.json({
-        success: true,
-        message: 'Payment status updated successfully'
-      });
+      const booking = bookings[0];
+      const currentAdvance = Number(booking.advance_paid) || 0;
+      const totalAmount = Number(booking.total_amount) || 0;
+
+      // Calculate new advance and determine transaction type
+      let newAdvance = currentAdvance;
+      let transactionAmount = 0;
+      let transactionType = 'payment';
+
+      if (advance_paid !== undefined) {
+        newAdvance = Number(advance_paid);
+        transactionAmount = newAdvance - currentAdvance;
+
+        // Determine transaction type based on whether this completes the payment
+        if (transactionAmount > 0) {
+          if (newAdvance >= totalAmount) {
+            transactionType = 'payment';
+          } else {
+            transactionType = 'advance';
+          }
+        }
+      }
+
+      // Start transaction
+      const connection = await pool.getConnection();
+      await connection.beginTransaction();
+
+      try {
+        const updates = [];
+        const values = [];
+
+        if (payment_status) {
+          updates.push('payment_status = ?');
+          values.push(payment_status);
+        }
+
+        if (transaction_id) {
+          updates.push('transaction_id = ?');
+          values.push(transaction_id);
+        }
+
+        if (advance_paid !== undefined) {
+          updates.push('advance_paid = ?');
+          values.push(newAdvance);
+        }
+
+        if (updates.length === 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'NO_UPDATES',
+            message: 'No fields to update'
+          });
+        }
+
+        values.push(id, hotelId);
+
+        // Update function booking
+        const query = `UPDATE function_bookings SET ${updates.join(', ')} WHERE id = ? AND hotel_id = ?`;
+        const [result] = await connection.execute(query, values);
+
+        if (result.affectedRows === 0) {
+          await connection.rollback();
+          return res.status(404).json({
+            success: false,
+            error: 'BOOKING_NOT_FOUND',
+            message: 'Function booking not found'
+          });
+        }
+
+        // Record the payment/advance in function_booking_amounts
+        if (transactionAmount > 0) {
+          const [amountResult] = await connection.execute(
+            `INSERT INTO function_booking_amounts (
+            function_booking_id, hotel_id, transaction_type, payment_method,
+            transaction_amount, transaction_reference, description, created_by
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              id,
+              hotelId,
+              transactionType,
+              booking.payment_method || 'cash',
+              transactionAmount,
+              transaction_id || null,
+              transactionType === 'advance'
+                ? `Additional advance payment of ₹${transactionAmount}`
+                : `Final payment of ₹${transactionAmount}`,
+              userId
+            ]
+          );
+
+          console.log(`💰 Additional ${transactionType} recorded: ₹${transactionAmount}`);
+        }
+
+        // Commit transaction
+        await connection.commit();
+
+        // Get the updated booking
+        const [updatedBooking] = await pool.execute(
+          'SELECT * FROM function_bookings WHERE id = ? AND hotel_id = ?',
+          [id, hotelId]
+        );
+
+        res.json({
+          success: true,
+          message: 'Payment status updated successfully',
+          data: updatedBooking[0]
+        });
+
+      } catch (error) {
+        await connection.rollback();
+        throw error;
+      } finally {
+        connection.release();
+      }
+
     } catch (error) {
       console.error('❌ Update payment status error:', error);
       res.status(500).json({
@@ -801,49 +1630,284 @@ class FunctionRoomController {
     }
   }
 
-  // Check function room availability - API ENDPOINT
-  checkFunctionRoomAvailability = async (req, res) => {
-    try {
-      const { room_id, date, start_time, end_time, exclude_booking_id } = req.body;
-      const hotelId = req.user.hotel_id;
 
-      console.log('🔍 API Checking availability:', { room_id, date, start_time, end_time, hotelId });
 
-      const isAvailable = await this.checkAvailabilityInternal(
-        room_id,
-        hotelId,
-        date,
-        start_time,
-        end_time,
-        exclude_booking_id
-      );
 
-      res.json({
-        success: true,
-        data: {
-          available: isAvailable,
-          room_id,
-          date,
-          start_time,
-          end_time
-        }
-      });
-    } catch (error) {
-      console.error('❌ API Check availability error:', error);
-      res.status(500).json({
-        success: false,
-        error: 'SERVER_ERROR',
-        message: error.message
-      });
-    }
-  }
 
-  // Cancel function booking
+  // cancelFunctionBooking = async (req, res) => {
+  //   try {
+  //     const { id } = req.params;
+  //     const hotelId = req.user.hotel_id;
+  //     const userId = req.user.userId;
+  //     const {
+  //       cancellation_reason,
+  //       refund_method,
+  //       refund_amount,
+  //       original_advance,
+  //       deducted_amount,
+  //       deduction_reason,
+  //       refund_notes,
+  //       process_refund,  // Add this from frontend
+  //       refund_type      // Add this from frontend
+  //     } = req.body;
+
+  //     // Get booking details
+  //     const [bookings] = await pool.execute(
+  //       'SELECT * FROM function_bookings WHERE id = ? AND hotel_id = ?',
+  //       [id, hotelId]
+  //     );
+
+  //     if (bookings.length === 0) {
+  //       return res.status(404).json({
+  //         success: false,
+  //         error: 'BOOKING_NOT_FOUND',
+  //         message: 'Function booking not found'
+  //       });
+  //     }
+
+  //     const booking = bookings[0];
+  //     const advancePaid = Number(booking.advance_paid) || 0;
+  //     const hasAdvance = advancePaid > 0;
+  //     const totalAmount = Number(booking.total_amount) || 0;
+
+  //     // Validate refund if processing
+  //     if (process_refund) {
+  //       if (!refund_method) {
+  //         return res.status(400).json({
+  //           success: false,
+  //           error: 'REFUND_METHOD_REQUIRED',
+  //           message: 'Refund method is required'
+  //         });
+  //       }
+
+  //       if (refund_amount === undefined || refund_amount === null) {
+  //         return res.status(400).json({
+  //           success: false,
+  //           error: 'REFUND_AMOUNT_REQUIRED',
+  //           message: 'Refund amount is required'
+  //         });
+  //       }
+
+  //       const maxRefund = hasAdvance ? advancePaid : totalAmount;
+
+  //       if (refund_amount > maxRefund) {
+  //         return res.status(400).json({
+  //           success: false,
+  //           error: 'INVALID_REFUND_AMOUNT',
+  //           message: `Refund amount cannot exceed ${maxRefund}`
+  //         });
+  //       }
+
+  //       if (refund_amount < 0) {
+  //         return res.status(400).json({
+  //           success: false,
+  //           error: 'INVALID_REFUND_AMOUNT',
+  //           message: 'Refund amount cannot be negative'
+  //         });
+  //       }
+
+  //       if (hasAdvance && deducted_amount > 0 && !deduction_reason) {
+  //         return res.status(400).json({
+  //           success: false,
+  //           error: 'DEDUCTION_REASON_REQUIRED',
+  //           message: 'Deduction reason is required'
+  //         });
+  //       }
+  //     }
+
+  //     // Start transaction
+  //     const connection = await pool.getConnection();
+  //     await connection.beginTransaction();
+
+  //     try {
+  //       // 1. Update booking status to cancelled
+  //       await connection.execute(
+  //         `UPDATE function_bookings 
+  //        SET status = 'cancelled', 
+  //            cancellation_reason = ?,
+  //            payment_status = ?,
+  //            updated_at = NOW()
+  //        WHERE id = ? AND hotel_id = ?`,
+  //         [
+  //           cancellation_reason || null,
+  //           hasAdvance ? 'refunded' : (process_refund ? 'refunded' : 'pending'),
+  //           id,
+  //           hotelId
+  //         ]
+  //       );
+
+  //       // 2. Update function room status back to available
+  //       await connection.execute(
+  //         'UPDATE function_rooms SET status = ? WHERE id = ? AND hotel_id = ?',
+  //         ['available', booking.function_room_id, hotelId]
+  //       );
+
+  //       // 3. If there are associated room bookings, handle them
+  //       if (booking.has_room_bookings && booking.room_booking_ids) {
+  //         try {
+  //           const roomBookingIds = JSON.parse(booking.room_booking_ids);
+  //           if (roomBookingIds.length > 0) {
+  //             const placeholders = roomBookingIds.map(() => '?').join(',');
+  //             await connection.execute(
+  //               `UPDATE bookings 
+  //              SET status = 'cancelled', 
+  //                  cancellation_reason = ? 
+  //              WHERE id IN (${placeholders}) AND hotel_id = ?`,
+  //               [cancellation_reason || 'Cancelled due to function cancellation', ...roomBookingIds, hotelId]
+  //             );
+  //           }
+  //         } catch (e) {
+  //           console.error('Error parsing room booking IDs:', e);
+  //         }
+  //       }
+
+  //       // 4. Create refund record if processing refund AND amount > 0
+  //       let refundRecord = null;
+  //       if (process_refund && refund_amount > 0) {
+  //         // Generate refund transaction ID
+  //         const refundTransactionId = `REF-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+  //         // Calculate deduction if any (only for advance bookings)
+  //         const deductedAmount = hasAdvance ? (advancePaid - refund_amount) : null;
+  //         const deductionNotes = deductedAmount > 0
+  //           ? `Deducted: ₹${deductedAmount} (${deduction_reason || 'Cancellation fee'})`
+  //           : null;
+
+  //         // Insert into refunds table
+  //         const [refundResult] = await connection.execute(
+  //           `INSERT INTO function_booking_refunds (
+  //           function_booking_id, hotel_id, refund_amount, refund_method, 
+  //           refund_status, transaction_id, refund_reason, processed_by,
+  //           processed_at, notes, original_advance, deducted_amount, deduction_reason,
+  //           refund_type
+  //         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?)`,
+  //           [
+  //             id,
+  //             hotelId,
+  //             refund_amount,
+  //             refund_method,
+  //             'pending',
+  //             refundTransactionId,
+  //             cancellation_reason || (hasAdvance ? 'Advance payment refund' : 'Goodwill refund'),
+  //             userId,
+  //             refund_notes || null,
+  //             hasAdvance ? advancePaid : totalAmount,
+  //             deductedAmount,
+  //             deductedAmount > 0 ? deduction_reason : null,
+  //             refund_type || (hasAdvance ? (refund_amount === advancePaid ? 'full' : 'partial') : 'partial')
+  //           ]
+  //         );
+
+  //         // Get the inserted refund record
+  //         const [refundDetails] = await connection.execute(
+  //           'SELECT * FROM function_booking_refunds WHERE id = ?',
+  //           [refundResult.insertId]
+  //         );
+  //         refundRecord = refundDetails[0];
+
+  //         // If refund method is cash, mark it as completed immediately
+  //         if (refund_method === 'cash') {
+  //           await connection.execute(
+  //             `UPDATE function_booking_refunds 
+  //            SET refund_status = 'completed', 
+  //                processed_at = NOW() 
+  //            WHERE id = ?`,
+  //             [refundResult.insertId]
+  //           );
+  //           refundRecord.refund_status = 'completed';
+  //         }
+
+  //         console.log('💰 Refund record created:', {
+  //           refund_id: refundResult.insertId,
+  //           amount: refund_amount,
+  //           original_amount: hasAdvance ? advancePaid : totalAmount,
+  //           deducted: deductedAmount,
+  //           method: refund_method,
+  //           type: refund_type,
+  //           transaction_id: refundTransactionId
+  //         });
+  //       }
+
+  //       // Commit transaction
+  //       await connection.commit();
+
+  //       // Prepare response message
+  //       let message = 'Function booking cancelled successfully';
+  //       if (process_refund) {
+  //         if (hasAdvance) {
+  //           if (refund_amount < advancePaid) {
+  //             const deducted = advancePaid - refund_amount;
+  //             message = `Function booking cancelled. ₹${deducted.toFixed(2)} deducted as ${deduction_reason || 'cancellation fee'}. ₹${refund_amount.toFixed(2)} will be refunded via ${refund_method}.`;
+  //           } else {
+  //             message = `Function booking cancelled. Full advance of ₹${refund_amount.toFixed(2)} will be refunded via ${refund_method}.`;
+  //           }
+  //         } else {
+  //           message = `Function booking cancelled. Goodwill refund of ₹${refund_amount.toFixed(2)} will be processed via ${refund_method}.`;
+  //         }
+  //       }
+
+  //       res.json({
+  //         success: true,
+  //         message: message,
+  //         data: {
+  //           booking: {
+  //             id: parseInt(id),
+  //             booking_reference: booking.booking_reference,
+  //             status: 'cancelled',
+  //             payment_status: hasAdvance ? 'refunded' : (process_refund ? 'refunded' : 'pending'),
+  //             advance_paid: advancePaid,
+  //             total_amount: totalAmount
+  //           },
+  //           refund: refundRecord ? {
+  //             id: refundRecord.id,
+  //             amount: refundRecord.refund_amount,
+  //             original_amount: refundRecord.original_advance,
+  //             deducted_amount: refundRecord.deducted_amount,
+  //             method: refundRecord.refund_method,
+  //             status: refundRecord.refund_status,
+  //             transaction_id: refundRecord.transaction_id,
+  //             processed_at: refundRecord.processed_at,
+  //             type: refundRecord.refund_type
+  //           } : null
+  //         }
+  //       });
+
+  //     } catch (error) {
+  //       await connection.rollback();
+  //       throw error;
+  //     } finally {
+  //       connection.release();
+  //     }
+
+  //   } catch (error) {
+  //     console.error('❌ Cancel function booking error:', error);
+  //     res.status(500).json({
+  //       success: false,
+  //       error: 'SERVER_ERROR',
+  //       message: error.message
+  //     });
+  //   }
+  // };
+
+
+
+
   cancelFunctionBooking = async (req, res) => {
     try {
       const { id } = req.params;
       const hotelId = req.user.hotel_id;
-      const { cancellation_reason } = req.body;
+      const userId = req.user.userId;
+      const {
+        cancellation_reason,
+        refund_method,
+        refund_amount,
+        original_advance,
+        deducted_amount,
+        deduction_reason,
+        refund_notes,
+        process_refund,  // Add this from frontend
+        refund_type      // Add this from frontend
+      } = req.body;
 
       // Get booking details
       const [bookings] = await pool.execute(
@@ -860,23 +1924,351 @@ class FunctionRoomController {
       }
 
       const booking = bookings[0];
+      const advancePaid = Number(booking.advance_paid) || 0;
+      const hasAdvance = advancePaid > 0;
+      const totalAmount = Number(booking.total_amount) || 0;
 
-      // Update booking status
-      await pool.execute(
-        'UPDATE function_bookings SET status = ?, cancellation_reason = ? WHERE id = ? AND hotel_id = ?',
-        ['cancelled', cancellation_reason || null, id, hotelId]
-      );
+      // Validate refund if processing
+      if (process_refund) {
+        if (!refund_method) {
+          return res.status(400).json({
+            success: false,
+            error: 'REFUND_METHOD_REQUIRED',
+            message: 'Refund method is required'
+          });
+        }
 
-      // Update room status back to available
-      await pool.execute(
-        'UPDATE function_rooms SET status = ? WHERE id = ? AND hotel_id = ?',
-        ['available', booking.function_room_id, hotelId]
-      );
+        if (refund_amount === undefined || refund_amount === null) {
+          return res.status(400).json({
+            success: false,
+            error: 'REFUND_AMOUNT_REQUIRED',
+            message: 'Refund amount is required'
+          });
+        }
 
-      res.json({
-        success: true,
-        message: 'Function booking cancelled successfully'
-      });
+        const maxRefund = hasAdvance ? advancePaid : totalAmount;
+
+        if (refund_amount > maxRefund) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_REFUND_AMOUNT',
+            message: `Refund amount cannot exceed ${maxRefund}`
+          });
+        }
+
+        if (refund_amount < 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_REFUND_AMOUNT',
+            message: 'Refund amount cannot be negative'
+          });
+        }
+
+        if (hasAdvance && deducted_amount > 0 && !deduction_reason) {
+          return res.status(400).json({
+            success: false,
+            error: 'DEDUCTION_REASON_REQUIRED',
+            message: 'Deduction reason is required'
+          });
+        }
+      }
+
+      // Start transaction
+      const connection = await pool.getConnection();
+      await connection.beginTransaction();
+
+      try {
+        // 1. Update booking status to cancelled
+        await connection.execute(
+          `UPDATE function_bookings 
+         SET status = 'cancelled', 
+             cancellation_reason = ?,
+             payment_status = ?,
+             updated_at = NOW()
+         WHERE id = ? AND hotel_id = ?`,
+          [
+            cancellation_reason || null,
+            hasAdvance ? 'refunded' : (process_refund ? 'refunded' : 'pending'),
+            id,
+            hotelId
+          ]
+        );
+
+        // 2. Update function room status back to available
+        await connection.execute(
+          'UPDATE function_rooms SET status = ? WHERE id = ? AND hotel_id = ?',
+          ['available', booking.function_room_id, hotelId]
+        );
+
+        // 3. If there are associated room bookings, handle them
+        if (booking.has_room_bookings && booking.room_booking_ids) {
+          try {
+            console.log('='.repeat(50));
+            console.log('🔄 PROCESSING ASSOCIATED ROOM BOOKINGS');
+            console.log('='.repeat(50));
+            console.log('Function Booking ID:', booking.id);
+            console.log('Has Room Bookings:', booking.has_room_bookings);
+            console.log('Room Booking IDs JSON (raw):', booking.room_booking_ids);
+            console.log('Type of raw data:', typeof booking.room_booking_ids);
+
+            // Parse the JSON
+            let roomBookingIds = [];
+            try {
+              // If it's already an object, use it directly
+              if (typeof booking.room_booking_ids === 'object' && booking.room_booking_ids !== null) {
+                roomBookingIds = booking.room_booking_ids;
+                console.log('📋 Already an object:', roomBookingIds);
+              }
+              // If it's a string, try to parse it
+              else if (typeof booking.room_booking_ids === 'string') {
+                // Check if it's a JSON string that starts with [
+                if (booking.room_booking_ids.trim().startsWith('[')) {
+                  roomBookingIds = JSON.parse(booking.room_booking_ids);
+                  console.log('📋 Parsed JSON array:', roomBookingIds);
+                }
+                // Check if it's a single number in a string
+                else if (!isNaN(parseInt(booking.room_booking_ids))) {
+                  roomBookingIds = [parseInt(booking.room_booking_ids)];
+                  console.log('📋 Converted single number to array:', roomBookingIds);
+                }
+                // Maybe it's a comma-separated list
+                else if (booking.room_booking_ids.includes(',')) {
+                  roomBookingIds = booking.room_booking_ids.split(',').map(id => parseInt(id.trim()));
+                  console.log('📋 Parsed comma-separated list:', roomBookingIds);
+                }
+              }
+
+              console.log('📋 Final room booking IDs:', roomBookingIds);
+              console.log('📋 Is Array?', Array.isArray(roomBookingIds));
+              console.log('📋 Length:', roomBookingIds.length);
+
+            } catch (parseError) {
+              console.error('❌ JSON Parse Error:', parseError);
+              // Last resort - try to extract numbers from the string
+              if (typeof booking.room_booking_ids === 'string') {
+                const matches = booking.room_booking_ids.match(/\d+/g);
+                if (matches && matches.length > 0) {
+                  roomBookingIds = matches.map(Number);
+                  console.log('📋 Extracted numbers from string:', roomBookingIds);
+                }
+              }
+            }
+
+            // Ensure roomBookingIds is an array and has items
+            if (Array.isArray(roomBookingIds) && roomBookingIds.length > 0) {
+              // Filter out any null/undefined values
+              roomBookingIds = roomBookingIds.filter(id => id != null);
+
+              console.log(`✅ Processing ${roomBookingIds.length} room booking IDs`);
+              console.log('📋 Cleaned IDs:', roomBookingIds);
+
+              const placeholders = roomBookingIds.map(() => '?').join(',');
+
+              // Check if these bookings exist
+              console.log('🔍 Checking bookings with IDs:', roomBookingIds);
+
+              // FIXED: Removed 'room_number' from the SELECT statement
+              const [existingBookings] = await connection.execute(
+                `SELECT id, room_id, status, from_date, to_date 
+         FROM bookings 
+         WHERE id IN (${placeholders}) AND hotel_id = ?`,
+                [...roomBookingIds, hotelId]
+              );
+
+              console.log('📊 Existing bookings found:', existingBookings.length);
+
+              if (existingBookings.length > 0) {
+                console.log('Booking details:', existingBookings.map(b => ({
+                  id: b.id,
+                  room_id: b.room_id,
+                  status: b.status,
+                  from_date: b.from_date,
+                  to_date: b.to_date
+                })));
+
+                // FINAL FIX: Removed 'cancellation_reason' and 'updated_at' from the UPDATE statement
+                const [updateResult] = await connection.execute(
+                  `UPDATE bookings 
+           SET status = 'cancelled'
+           WHERE id IN (${placeholders}) AND hotel_id = ?`,
+                  [...roomBookingIds, hotelId]
+                );
+
+                console.log(`✅ Updated ${updateResult.affectedRows} bookings to cancelled`);
+
+                // Get unique room IDs to update
+                const roomIds = [...new Set(existingBookings.map(b => b.room_id).filter(id => id))];
+                console.log('🏨 Unique room IDs to update:', roomIds);
+
+
+                // Update each room to available
+                for (const roomId of roomIds) {
+                  if (roomId) {
+                    console.log(`🔄 Setting room ID ${roomId} to available...`);
+
+                    // First check current room status
+                    const [currentRoom] = await connection.execute(
+                      'SELECT id, room_number, status FROM rooms WHERE id = ? AND hotel_id = ?',
+                      [roomId, hotelId]
+                    );
+
+                    console.log('📊 Current room status:', currentRoom[0]?.status);
+
+                    // FINAL FIX: Removed updated_at since it doesn't exist in rooms table
+                    const [updateRoomResult] = await connection.execute(
+                      'UPDATE rooms SET status = ? WHERE id = ? AND hotel_id = ?',
+                      ['available', roomId, hotelId]
+                    );
+
+                    console.log(`✅ Room update result:`, updateRoomResult.affectedRows > 0 ? 'SUCCESS' : 'FAILED');
+
+                    // Verify the update
+                    const [verifyRoom] = await connection.execute(
+                      'SELECT id, room_number, status FROM rooms WHERE id = ? AND hotel_id = ?',
+                      [roomId, hotelId]
+                    );
+
+                    if (verifyRoom.length > 0) {
+                      console.log(`📊 Room ${verifyRoom[0].room_number} status after update:`, verifyRoom[0].status);
+                    }
+                  }
+                }
+
+                console.log(`✅ Successfully processed ${roomBookingIds.length} associated room bookings and freed ${roomIds.length} rooms`);
+              } else {
+                console.log('⚠️ No existing bookings found with these IDs');
+                console.log('📋 IDs we searched for:', roomBookingIds);
+              }
+            } else {
+              console.log('⚠️ No valid room booking IDs to process');
+              console.log('roomBookingIds value:', roomBookingIds);
+            }
+            console.log('='.repeat(50));
+          } catch (e) {
+            console.error('❌ Error processing room bookings:', e);
+            console.error('Error details:', e.message);
+            console.error('Error stack:', e.stack);
+            // Don't throw the error - let the cancellation continue
+          }
+        }
+        // 4. Create refund record if processing refund AND amount > 0
+        let refundRecord = null;
+        if (process_refund && refund_amount > 0) {
+          // Generate refund transaction ID
+          const refundTransactionId = `REF-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+          // Calculate deduction if any (only for advance bookings)
+          const deductedAmount = hasAdvance ? (advancePaid - refund_amount) : null;
+          const deductionNotes = deductedAmount > 0
+            ? `Deducted: ₹${deductedAmount} (${deduction_reason || 'Cancellation fee'})`
+            : null;
+
+          // Insert into refunds table
+          const [refundResult] = await connection.execute(
+            `INSERT INTO function_booking_refunds (
+            function_booking_id, hotel_id, refund_amount, refund_method, 
+            refund_status, transaction_id, refund_reason, processed_by,
+            processed_at, notes, original_advance, deducted_amount, deduction_reason,
+            refund_type
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?)`,
+            [
+              id,
+              hotelId,
+              refund_amount,
+              refund_method,
+              'pending',
+              refundTransactionId,
+              cancellation_reason || (hasAdvance ? 'Advance payment refund' : 'Goodwill refund'),
+              userId,
+              refund_notes || null,
+              hasAdvance ? advancePaid : totalAmount,
+              deductedAmount,
+              deductedAmount > 0 ? deduction_reason : null,
+              refund_type || (hasAdvance ? (refund_amount === advancePaid ? 'full' : 'partial') : 'partial')
+            ]
+          );
+
+          // Get the inserted refund record
+          const [refundDetails] = await connection.execute(
+            'SELECT * FROM function_booking_refunds WHERE id = ?',
+            [refundResult.insertId]
+          );
+          refundRecord = refundDetails[0];
+
+          // If refund method is cash, mark it as completed immediately
+          if (refund_method === 'cash') {
+            await connection.execute(
+              `UPDATE function_booking_refunds 
+             SET refund_status = 'completed', 
+                 processed_at = NOW() 
+             WHERE id = ?`,
+              [refundResult.insertId]
+            );
+            refundRecord.refund_status = 'completed';
+          }
+
+          console.log('💰 Refund record created:', {
+            refund_id: refundResult.insertId,
+            amount: refund_amount,
+            original_amount: hasAdvance ? advancePaid : totalAmount,
+            deducted: deductedAmount,
+            method: refund_method,
+            type: refund_type,
+            transaction_id: refundTransactionId
+          });
+        }
+
+        // Commit transaction
+        await connection.commit();
+
+        // Prepare response message
+        let message = 'Function booking cancelled successfully';
+        if (process_refund) {
+          if (hasAdvance) {
+            if (refund_amount < advancePaid) {
+              const deducted = advancePaid - refund_amount;
+              message = `Function booking cancelled. ₹${deducted.toFixed(2)} deducted as ${deduction_reason || 'cancellation fee'}. ₹${refund_amount.toFixed(2)} will be refunded via ${refund_method}.`;
+            } else {
+              message = `Function booking cancelled. Full advance of ₹${refund_amount.toFixed(2)} will be refunded via ${refund_method}.`;
+            }
+          } else {
+            message = `Function booking cancelled. Goodwill refund of ₹${refund_amount.toFixed(2)} will be processed via ${refund_method}.`;
+          }
+        }
+
+        res.json({
+          success: true,
+          message: message,
+          data: {
+            booking: {
+              id: parseInt(id),
+              booking_reference: booking.booking_reference,
+              status: 'cancelled',
+              payment_status: hasAdvance ? 'refunded' : (process_refund ? 'refunded' : 'pending'),
+              advance_paid: advancePaid,
+              total_amount: totalAmount
+            },
+            refund: refundRecord ? {
+              id: refundRecord.id,
+              amount: refundRecord.refund_amount,
+              original_amount: refundRecord.original_advance,
+              deducted_amount: refundRecord.deducted_amount,
+              method: refundRecord.refund_method,
+              status: refundRecord.refund_status,
+              transaction_id: refundRecord.transaction_id,
+              processed_at: refundRecord.processed_at,
+              type: refundRecord.refund_type
+            } : null
+          }
+        });
+
+      } catch (error) {
+        await connection.rollback();
+        throw error;
+      } finally {
+        connection.release();
+      }
+
     } catch (error) {
       console.error('❌ Cancel function booking error:', error);
       res.status(500).json({
@@ -885,12 +2277,10 @@ class FunctionRoomController {
         message: error.message
       });
     }
-  }
+  };
 
 
-  // ===========================================
-  // DELETE FUNCTION BOOKING (PERMANENT)
-  // ===========================================
+  // Delete function booking (permanent)
   deleteFunctionBooking = async (req, res) => {
     try {
       const { id } = req.params;
@@ -925,7 +2315,7 @@ class FunctionRoomController {
             const roomBookingIds = JSON.parse(booking.room_booking_ids);
 
             if (roomBookingIds.length > 0) {
-              // Option 1: Delete the associated room bookings as well
+              // Delete the associated room bookings as well
               const placeholders = roomBookingIds.map(() => '?').join(',');
               await connection.execute(
                 `DELETE FROM bookings WHERE id IN (${placeholders}) AND hotel_id = ?`,
@@ -989,6 +2379,10 @@ class FunctionRoomController {
     }
   }
 
+  // ===========================================
+  // OTHER FUNCTIONS (keep as they were)
+  // ===========================================
+
   // Get availability calendar
   getAvailabilityCalendar = async (req, res) => {
     try {
@@ -996,8 +2390,6 @@ class FunctionRoomController {
       const { year, month } = req.query;
 
       const startDate = `${year}-${month.padStart(2, '0')}-01`;
-
-      // Get last day of month
       const lastDay = new Date(year, parseInt(month), 0).getDate();
       const endDate = `${year}-${month.padStart(2, '0')}-${lastDay}`;
 
@@ -1177,300 +2569,7 @@ class FunctionRoomController {
     }
   }
 
-  // Create function booking with room bookings
-  createFunctionBookingWithRooms = async (req, res) => {
-    try {
-      const hotelId = req.user.hotel_id;
-      const userId = req.user.userId;
-      const {
-        function_room_id,
-        event_name,
-        event_type,
-        booking_date,
-        start_time,
-        end_time,
-        setup_time,
-        breakdown_time,
-        rate_type,
-        rate_amount,
-        subtotal,
-        service_charge = 0,
-        gst = 0,
-        catering_charges = 0,
-        decoration_charges = 0,
-        other_charges = 0,
-        discount = 0,
-        total_amount,
-        advance_paid = 0,
-        guests_expected,
-        payment_method,
-        payment_status = 'pending',
-        transaction_id,
-        status = 'confirmed',
-        customer_name,
-        customer_phone,
-        customer_email,
-        customer_address,
-        special_requests,
-        catering_requirements,
-        setup_requirements,
-        customer_id = null,
-        has_room_bookings = false,
-        room_booking_ids = null,
-        total_rooms_booked = 0
-      } = req.body;
-
-      // Validate required fields
-      if (!function_room_id || !event_name || !booking_date || !start_time || !end_time || !customer_name || !customer_phone) {
-        return res.status(400).json({
-          success: false,
-          error: 'MISSING_FIELDS',
-          message: 'Missing required fields'
-        });
-      }
-
-      // Check room availability
-      const isAvailable = await this.checkAvailabilityInternal(
-        function_room_id,
-        hotelId,
-        booking_date,
-        start_time,
-        end_time
-      );
-
-      if (!isAvailable) {
-        return res.status(400).json({
-          success: false,
-          error: 'ROOM_NOT_AVAILABLE',
-          message: 'Function room is not available for the selected date and time'
-        });
-      }
-
-      // Generate booking reference
-      const bookingReference = `EVT-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 1000)}`;
-
-      // Calculate total hours
-      const totalHours = this.calculateHours(start_time, end_time);
-
-      // Parse room booking IDs if provided
-      let roomBookingIdsArray = null;
-      if (room_booking_ids) {
-        try {
-          roomBookingIdsArray = typeof room_booking_ids === 'string'
-            ? JSON.parse(room_booking_ids)
-            : room_booking_ids;
-        } catch (e) {
-          console.error('Error parsing room_booking_ids:', e);
-        }
-      }
-
-      // Create booking
-      const [result] = await pool.execute(
-        `INSERT INTO function_bookings (
-          hotel_id, function_room_id, customer_id, booking_reference,
-          event_name, event_type, booking_date, start_time, end_time,
-          setup_time, breakdown_time, total_hours, rate_type, rate_amount,
-          subtotal, service_charge, gst, catering_charges, decoration_charges,
-          other_charges, discount, total_amount, advance_paid,
-          guests_expected, payment_method, payment_status, transaction_id,
-          status, customer_name, customer_phone, customer_email,
-          customer_address, special_requests, catering_requirements,
-          setup_requirements, created_by, has_room_bookings, 
-          room_booking_ids, total_rooms_booked
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          hotelId, function_room_id, customer_id, bookingReference,
-          event_name, event_type, booking_date, start_time, end_time,
-          setup_time || null, breakdown_time || null, totalHours, rate_type, rate_amount,
-          subtotal, service_charge, gst, catering_charges, decoration_charges,
-          other_charges, discount, total_amount, advance_paid,
-          guests_expected || null, payment_method || 'cash', payment_status, transaction_id || null,
-          status, customer_name, customer_phone, customer_email || null,
-          customer_address || null, special_requests || null, catering_requirements || null,
-          setup_requirements || null, userId, has_room_bookings,
-          roomBookingIdsArray ? JSON.stringify(roomBookingIdsArray) : null,
-          total_rooms_booked
-        ]
-      );
-
-      // Create junction entries if room bookings exist
-      if (has_room_bookings && roomBookingIdsArray && roomBookingIdsArray.length > 0) {
-        for (const roomBookingId of roomBookingIdsArray) {
-          await pool.execute(
-            `INSERT INTO function_room_bookings_junction (function_booking_id, room_booking_id)
-             VALUES (?, ?)`,
-            [result.insertId, roomBookingId]
-          );
-        }
-      }
-
-      // Update room status if confirmed
-      if (status === 'confirmed') {
-        await pool.execute(
-          'UPDATE function_rooms SET status = ? WHERE id = ? AND hotel_id = ?',
-          ['booked', function_room_id, hotelId]
-        );
-      }
-
-      res.status(201).json({
-        success: true,
-        message: has_room_bookings
-          ? 'Function booking with accommodation created successfully'
-          : 'Function booking created successfully',
-        data: {
-          id: result.insertId,
-          booking_reference: bookingReference,
-          total_amount,
-          advance_paid,
-          balance_due: total_amount - advance_paid,
-          has_room_bookings,
-          total_rooms_booked
-        }
-      });
-    } catch (error) {
-      console.error('❌ Create function booking with rooms error:', error);
-      res.status(500).json({
-        success: false,
-        error: 'SERVER_ERROR',
-        message: error.message
-      });
-    }
-  }
-
-  // Get function booking with associated room bookings
-  getFunctionBookingWithRooms = async (req, res) => {
-    try {
-      const { id } = req.params;
-      const hotelId = req.user.hotel_id;
-
-      // Get function booking
-      const [bookings] = await pool.execute(
-        `SELECT fb.*, fr.room_number, fr.name as room_name, fr.capacity, fr.base_price
-         FROM function_bookings fb
-         LEFT JOIN function_rooms fr ON fb.function_room_id = fr.id
-         WHERE fb.id = ? AND fb.hotel_id = ?`,
-        [id, hotelId]
-      );
-
-      if (bookings.length === 0) {
-        return res.status(404).json({
-          success: false,
-          error: 'BOOKING_NOT_FOUND',
-          message: 'Function booking not found'
-        });
-      }
-
-      const booking = bookings[0];
-
-      // Get associated room bookings if any
-      let roomBookings = [];
-      if (booking.has_room_bookings && booking.room_booking_ids) {
-        const roomBookingIds = JSON.parse(booking.room_booking_ids);
-
-        if (roomBookingIds.length > 0) {
-          const placeholders = roomBookingIds.map(() => '?').join(',');
-          const [roomBookingsData] = await pool.execute(
-            `SELECT b.*, r.room_number, r.type as room_type
-             FROM bookings b
-             LEFT JOIN rooms r ON b.room_id = r.id
-             WHERE b.id IN (${placeholders}) AND b.hotel_id = ?`,
-            [...roomBookingIds, hotelId]
-          );
-          roomBookings = roomBookingsData;
-        }
-      }
-
-      res.json({
-        success: true,
-        data: {
-          ...booking,
-          room_bookings: roomBookings
-        }
-      });
-    } catch (error) {
-      console.error('❌ Get function booking with rooms error:', error);
-      res.status(500).json({
-        success: false,
-        error: 'SERVER_ERROR',
-        message: error.message
-      });
-    }
-  }
-
-  // Get all function bookings with room bookings
-  getAllFunctionBookingsWithRooms = async (req, res) => {
-    try {
-      const hotelId = req.user.hotel_id;
-      const { date, status, room_id } = req.query;
-
-      let query = `
-        SELECT fb.*, fr.room_number, fr.name as room_name, fr.capacity
-        FROM function_bookings fb
-        LEFT JOIN function_rooms fr ON fb.function_room_id = fr.id
-        WHERE fb.hotel_id = ?
-      `;
-
-      const params = [hotelId];
-
-      if (date) {
-        query += ` AND fb.booking_date = ?`;
-        params.push(date);
-      }
-
-      if (status) {
-        query += ` AND fb.status = ?`;
-        params.push(status);
-      }
-
-      if (room_id) {
-        query += ` AND fb.function_room_id = ?`;
-        params.push(room_id);
-      }
-
-      query += ` ORDER BY fb.booking_date DESC, fb.start_time`;
-
-      const [bookings] = await pool.execute(query, params);
-
-      // Get room bookings for each function booking
-      for (const booking of bookings) {
-        if (booking.has_room_bookings && booking.room_booking_ids) {
-          try {
-            const roomBookingIds = JSON.parse(booking.room_booking_ids);
-            if (roomBookingIds.length > 0) {
-              const placeholders = roomBookingIds.map(() => '?').join(',');
-              const [roomBookingsData] = await pool.execute(
-                `SELECT b.id, b.room_id, r.room_number, r.type as room_type, 
-                        b.from_date, b.to_date, b.total as amount
-                 FROM bookings b
-                 LEFT JOIN rooms r ON b.room_id = r.id
-                 WHERE b.id IN (${placeholders}) AND b.hotel_id = ?`,
-                [...roomBookingIds, hotelId]
-              );
-              booking.room_bookings = roomBookingsData;
-            }
-          } catch (e) {
-            booking.room_bookings = [];
-          }
-        } else {
-          booking.room_bookings = [];
-        }
-      }
-
-      res.json({
-        success: true,
-        data: bookings,
-        count: bookings.length
-      });
-    } catch (error) {
-      console.error('❌ Get all function bookings with rooms error:', error);
-      res.status(500).json({
-        success: false,
-        error: 'SERVER_ERROR',
-        message: error.message
-      });
-    }
-  }
-
+  // Invoice functions (keep as they were)
   generateInvoicePDF = async (req, res) => {
     try {
       const { id } = req.params;
@@ -1509,8 +2608,7 @@ class FunctionRoomController {
 
       const booking = bookings[0];
 
-      // Generate invoice number using booking reference or create one
-      // Since invoice_number column might not exist, we'll use booking_reference
+      // Generate invoice number using booking reference
       const invoiceNumber = `INV-${booking.booking_reference || `FB-${id}-${Date.now().toString().slice(-6)}`}`;
 
       // Optional: Try to update invoice_number if column exists (will fail silently if not)
@@ -1622,8 +2720,8 @@ class FunctionRoomController {
         ['Event Name:', booking.event_name],
         ['Event Type:', booking.event_type || 'N/A'],
         ['Venue:', `${booking.room_name} (Room ${booking.room_number})`],
-        ['Event Date:', formatDate(booking.booking_date)],
-        ['Event Time:', `${formatTime(booking.start_time)} - ${formatTime(booking.end_time)}`],
+        ['Check-in:', `${formatDate(booking.booking_date)} ${formatTime(booking.start_time)}`],
+        ['Check-out:', `${formatDate(booking.end_date || booking.booking_date)} ${formatTime(booking.end_time)}`],
         ['Total Hours:', booking.total_hours ? `${booking.total_hours} hrs` : 'N/A'],
         ['Expected Guests:', booking.guests_expected || 'N/A'],
         ['Booking Reference:', booking.booking_reference]
@@ -1642,7 +2740,7 @@ class FunctionRoomController {
       if (booking.has_room_bookings && roomBookings.length > 0) {
         doc.fontSize(11).font('Helvetica-Bold').text('Accommodation Details:');
         doc.fontSize(10).font('Helvetica');
-        doc.text(`${roomBookings.length} room(s) booked with this event`);
+        doc.text(`${roomBookings.length} room(s) blocked with this event`);
         doc.moveDown(0.5);
 
         // Table header
@@ -1651,7 +2749,6 @@ class FunctionRoomController {
         doc.text('Check-in', 130, doc.y, { width: 100 });
         doc.text('Check-out', 230, doc.y, { width: 100 });
         doc.text('Nights', 330, doc.y, { width: 60 });
-        doc.text('Amount', 390, doc.y, { width: 80, align: 'right' });
         doc.moveDown();
 
         // Table rows
@@ -1664,7 +2761,6 @@ class FunctionRoomController {
           doc.text(formatDate(room.from_date), 130, doc.y, { width: 100 });
           doc.text(formatDate(room.to_date), 230, doc.y, { width: 100 });
           doc.text(nights.toString(), 330, doc.y, { width: 60 });
-          doc.text(formatCurrency(room.total || room.amount || 0), 390, doc.y, { width: 80, align: 'right' });
           doc.moveDown();
         });
         doc.moveDown();
@@ -1788,7 +2884,6 @@ class FunctionRoomController {
       const { id } = req.params;
       const hotelId = req.user.hotel_id;
 
-      // Just return the booking reference as invoice info
       const [bookings] = await pool.execute(
         `SELECT booking_reference, created_at 
          FROM function_bookings 
@@ -1822,9 +2917,7 @@ class FunctionRoomController {
     }
   };
 
-  // ===========================================
-  // GENERATE INVOICE DATA (JSON) - LIKE STANDARD BOOKINGS
-  // ===========================================
+  // Generate invoice JSON
   generateInvoiceJSON = async (req, res) => {
     try {
       const { id } = req.params;
@@ -1832,7 +2925,6 @@ class FunctionRoomController {
 
       console.log('📄 Generating function booking invoice JSON:', { id, hotelId });
 
-      // Fetch booking details with function room info and hotel info from users table
       const [bookings] = await pool.execute(
         `SELECT fb.*, 
               fr.room_number, 
@@ -1998,7 +3090,8 @@ class FunctionRoomController {
           event: {
             name: booking.event_name || '',
             type: booking.event_type || '',
-            date: formatDate(booking.booking_date),
+            checkInDate: formatDate(booking.booking_date),
+            checkOutDate: formatDate(booking.end_date || booking.booking_date),
             startTime: formatTime(booking.start_time),
             endTime: formatTime(booking.end_time),
             totalHours: booking.total_hours || this.calculateHours(booking.start_time, booking.end_time),
@@ -2010,8 +3103,7 @@ class FunctionRoomController {
             roomType: room.type,
             fromDate: formatDate(room.from_date),
             toDate: formatDate(room.to_date),
-            nights: calculateNights(room.from_date, room.to_date),
-            amount: parseFloat(room.total || room.amount || 0)
+            nights: calculateNights(room.from_date, room.to_date)
           })),
           charges: charges,
           subtotal: parseFloat(booking.subtotal || booking.rate_amount || 0),
@@ -2048,9 +3140,7 @@ class FunctionRoomController {
     }
   };
 
-  // ===========================================
-  // DOWNLOAD FUNCTION BOOKING INVOICE AS HTML (LIKE REGULAR BOOKINGS)
-  // ===========================================
+  // Download function booking invoice as HTML
   downloadFunctionInvoiceHTML = async (req, res) => {
     try {
       const { id } = req.params;
@@ -2058,7 +3148,6 @@ class FunctionRoomController {
 
       console.log('📥 Downloading function booking invoice HTML:', { id, hotelId });
 
-      // Get function booking details
       const [bookings] = await pool.execute(
         `SELECT fb.*, 
               fr.room_number, 
@@ -2152,7 +3241,7 @@ class FunctionRoomController {
         }
       };
 
-      // Create HTML invoice with hotel logo
+      // Create HTML invoice
       const invoiceHTML = `
     <!DOCTYPE html>
     <html>
@@ -2160,182 +3249,36 @@ class FunctionRoomController {
       <meta charset="UTF-8">
       <title>Function Invoice - ${booking.booking_reference}</title>
       <style>
-        body { 
-          font-family: Arial, sans-serif; 
-          margin: 40px; 
-          line-height: 1.6; 
-          color: #333;
-        }
-        
-        .header { 
-          display: flex; 
-          justify-content: space-between; 
-          align-items: flex-start; 
-          margin-bottom: 30px; 
-          padding-bottom: 20px; 
-          border-bottom: 2px solid #2c3e50; 
-        }
-        
-        .logo-section { 
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          align-items: flex-start;
-        }
-        
-        .hotel-logo {
-          max-width: 180px;
-          max-height: 100px;
-          height: auto;
-          margin-bottom: 15px;
-          object-fit: contain;
-          border-radius: 4px;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        .hotel-details { 
-          text-align: right; 
-          flex: 1;
-        }
-        
-        .hotel-name { 
-          font-size: 24px; 
-          font-weight: bold; 
-          color: #2c3e50; 
-          margin-bottom: 10px;
-          text-transform: uppercase;
-          letter-spacing: 1px;
-        }
-        
-        .invoice-title { 
-          text-align: center; 
-          font-size: 28px; 
-          margin: 30px 0; 
-          color: #2c3e50; 
-          text-transform: uppercase; 
-          letter-spacing: 2px;
-          padding: 15px;
-          background-color: #f8f9fa;
-          border-radius: 5px;
-          font-weight: bold;
-        }
-        
-        .details-section { 
-          display: flex; 
-          justify-content: space-between; 
-          margin-bottom: 30px; 
-          gap: 30px; 
-        }
-        
-        .details-box { 
-          flex: 1; 
-          padding: 20px;
-          background-color: #f8f9fa;
-          border-radius: 8px;
-          border: 1px solid #e0e0e0;
-        }
-        
-        .details-label { 
-          font-weight: bold; 
-          color: #2c3e50; 
-          margin-bottom: 15px; 
-          display: block; 
-          font-size: 16px;
-          padding-bottom: 8px;
-          border-bottom: 2px solid #3498db;
-        }
-        
-        .table { 
-          width: 100%; 
-          border-collapse: collapse; 
-          margin: 30px 0; 
-          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        .table th { 
-          background-color: #2c3e50; 
-          color: white;
-          padding: 15px; 
-          text-align: left; 
-          border-bottom: 2px solid #1a252f; 
-          font-weight: bold; 
-          font-size: 14px;
-        }
-        
-        .table td { 
-          padding: 15px; 
-          border-bottom: 1px solid #e0e0e0; 
-          font-size: 14px;
-        }
-        
-        .total-row { 
-          font-weight: bold; 
-          font-size: 16px; 
-          background-color: #e8f4fd;
-        }
-        
-        .total-row td {
-          border-top: 2px solid #3498db;
-          color: #2c3e50;
-        }
-        
-        .payment-status {
-          display: inline-block;
-          padding: 5px 15px;
-          border-radius: 20px;
-          font-size: 12px;
-          font-weight: bold;
-          text-transform: uppercase;
-        }
-        
+        body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; color: #333; }
+        .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #2c3e50; }
+        .logo-section { flex: 1; display: flex; flex-direction: column; align-items: flex-start; }
+        .hotel-logo { max-width: 180px; max-height: 100px; height: auto; margin-bottom: 15px; object-fit: contain; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .hotel-details { text-align: right; flex: 1; }
+        .hotel-name { font-size: 24px; font-weight: bold; color: #2c3e50; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
+        .invoice-title { text-align: center; font-size: 28px; margin: 30px 0; color: #2c3e50; text-transform: uppercase; letter-spacing: 2px; padding: 15px; background-color: #f8f9fa; border-radius: 5px; font-weight: bold; }
+        .details-section { display: flex; justify-content: space-between; margin-bottom: 30px; gap: 30px; }
+        .details-box { flex: 1; padding: 20px; background-color: #f8f9fa; border-radius: 8px; border: 1px solid #e0e0e0; }
+        .details-label { font-weight: bold; color: #2c3e50; margin-bottom: 15px; display: block; font-size: 16px; padding-bottom: 8px; border-bottom: 2px solid #3498db; }
+        .table { width: 100%; border-collapse: collapse; margin: 30px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .table th { background-color: #2c3e50; color: white; padding: 15px; text-align: left; border-bottom: 2px solid #1a252f; font-weight: bold; font-size: 14px; }
+        .table td { padding: 15px; border-bottom: 1px solid #e0e0e0; font-size: 14px; }
+        .total-row { font-weight: bold; font-size: 16px; background-color: #e8f4fd; }
+        .total-row td { border-top: 2px solid #3498db; color: #2c3e50; }
+        .payment-status { display: inline-block; padding: 5px 15px; border-radius: 20px; font-size: 12px; font-weight: bold; text-transform: uppercase; }
         .status-pending { background-color: #fff3cd; color: #856404; }
         .status-completed { background-color: #d4edda; color: #155724; }
         .status-partial { background-color: #cce5ff; color: #004085; }
-        
-        .footer { 
-          margin-top: 50px; 
-          text-align: center; 
-          font-size: 13px; 
-          color: #666; 
-          padding-top: 30px; 
-          border-top: 2px dashed #ddd; 
-        }
-        
-        .barcode { 
-          text-align: center; 
-          font-family: 'Courier New', monospace; 
-          letter-spacing: 3px; 
-          margin-top: 20px; 
-          background-color: #f5f5f5; 
-          padding: 12px;
-          border-radius: 4px;
-          font-size: 18px;
-          font-weight: bold;
-          color: #2c3e50;
-          border: 1px dashed #ccc;
-        }
-        
-        @media print {
-          body { margin: 0; padding: 20px; }
-          .hotel-logo { max-width: 120px; }
-          .no-print { display: none; }
-        }
+        .footer { margin-top: 50px; text-align: center; font-size: 13px; color: #666; padding-top: 30px; border-top: 2px dashed #ddd; }
+        .barcode { text-align: center; font-family: 'Courier New', monospace; letter-spacing: 3px; margin-top: 20px; background-color: #f5f5f5; padding: 12px; border-radius: 4px; font-size: 18px; font-weight: bold; color: #2c3e50; border: 1px dashed #ccc; }
+        @media print { body { margin: 0; padding: 20px; } .hotel-logo { max-width: 120px; } .no-print { display: none; } }
       </style>
     </head>
     <body>
-      <!-- Header with Hotel Logo -->
       <div class="header">
         <div class="logo-section">
-          ${booking.hotel_logo ? `
-            <img src="${booking.hotel_logo}" alt="Hotel Logo" class="hotel-logo">
-          ` : `
-            <div class="hotel-name">${booking.hotel_name || 'Hotel'}</div>
-          `}
-          <div style="font-size: 11px; color: #666; margin-top: 5px;">
-            Generated by Hotel Management System
-          </div>
+          ${booking.hotel_logo ? `<img src="${booking.hotel_logo}" alt="Hotel Logo" class="hotel-logo">` : `<div class="hotel-name">${booking.hotel_name || 'Hotel'}</div>`}
+          <div style="font-size: 11px; color: #666; margin-top: 5px;">Generated by Hotel Management System</div>
         </div>
-        
         <div class="hotel-details">
           <div class="hotel-info" style="font-size: 13px; color: #666;">
             ${booking.hotel_address || ''}<br>
@@ -2373,8 +3316,8 @@ class FunctionRoomController {
       <div class="details-section">
         <div class="details-box">
           <span class="details-label">Event Schedule:</span>
-          <div><strong>Date:</strong> ${formatDate(booking.booking_date)}</div>
-          <div><strong>Time:</strong> ${formatTime(booking.start_time)} - ${formatTime(booking.end_time)}</div>
+          <div><strong>Check-in:</strong> ${formatDate(booking.booking_date)} ${formatTime(booking.start_time)}</div>
+          <div><strong>Check-out:</strong> ${formatDate(booking.end_date || booking.booking_date)} ${formatTime(booking.end_time)}</div>
           <div><strong>Duration:</strong> ${booking.total_hours || 0} hours</div>
           <div><strong>Guests:</strong> ${booking.guests_expected || 0}</div>
         </div>
@@ -2391,11 +3334,10 @@ class FunctionRoomController {
         </div>
       </div>
       
-      <!-- Accommodation Rooms if any -->
       ${roomBookings.length > 0 ? `
         <div style="margin-top: 30px;">
           <h3 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px;">
-            Accommodation Rooms (${roomBookings.length})
+            Blocked Rooms (${roomBookings.length})
           </h3>
           <table class="table">
             <thead>
@@ -2404,28 +3346,18 @@ class FunctionRoomController {
                 <th>Check-in</th>
                 <th>Check-out</th>
                 <th>Nights</th>
-                <th style="text-align: right;">Amount</th>
               </tr>
             </thead>
             <tbody>
               ${roomBookings.map(room => {
         const nights = calculateNights(room.from_date, room.to_date);
-        return `
-                  <tr>
-                    <td>Room ${room.room_number}</td>
-                    <td>${formatDate(room.from_date)}</td>
-                    <td>${formatDate(room.to_date)}</td>
-                    <td>${nights}</td>
-                    <td style="text-align: right;">${formatCurrency(room.total || room.amount || 0)}</td>
-                  </tr>
-                `;
+        return `<tr><td>Room ${room.room_number}</td><td>${formatDate(room.from_date)}</td><td>${formatDate(room.to_date)}</td><td>${nights}</td></tr>`;
       }).join('')}
             </tbody>
           </table>
         </div>
       ` : ''}
       
-      <!-- Charges Breakdown -->
       <table class="table">
         <thead>
           <tr>
@@ -2435,63 +3367,25 @@ class FunctionRoomController {
         </thead>
         <tbody>
           <tr>
-            <td>
-              Room Charges (${booking.rate_type || 'full_day'})<br>
-              <small style="color: #666;">${formatCurrency(booking.rate_amount || booking.subtotal || 0)}</small>
-            </td>
+            <td>Room Charges (${booking.rate_type || 'full_day'})</td>
             <td style="text-align: right;">${formatCurrency(booking.rate_amount || booking.subtotal || 0)}</td>
           </tr>
-          
-          ${booking.service_charge > 0 ? `
-            <tr>
-              <td>Service Charge</td>
-              <td style="text-align: right;">${formatCurrency(booking.service_charge)}</td>
-            </tr>
-          ` : ''}
-          
-          ${booking.catering_charges > 0 ? `
-            <tr>
-              <td>Catering Charges</td>
-              <td style="text-align: right;">${formatCurrency(booking.catering_charges)}</td>
-            </tr>
-          ` : ''}
-          
-          ${booking.decoration_charges > 0 ? `
-            <tr>
-              <td>Decoration Charges</td>
-              <td style="text-align: right;">${formatCurrency(booking.decoration_charges)}</td>
-            </tr>
-          ` : ''}
-          
-          ${booking.other_charges > 0 ? `
-            <tr>
-              <td>Other Charges</td>
-              <td style="text-align: right;">${formatCurrency(booking.other_charges)}</td>
-            </tr>
-          ` : ''}
-          
-          ${booking.discount > 0 ? `
-            <tr style="color: green;">
-              <td>Discount</td>
-              <td style="text-align: right;">-${formatCurrency(booking.discount)}</td>
-            </tr>
-          ` : ''}
-          
+          ${booking.service_charge > 0 ? `<tr><td>Service Charge</td><td style="text-align: right;">${formatCurrency(booking.service_charge)}</td></tr>` : ''}
+          ${booking.catering_charges > 0 ? `<tr><td>Catering Charges</td><td style="text-align: right;">${formatCurrency(booking.catering_charges)}</td></tr>` : ''}
+          ${booking.decoration_charges > 0 ? `<tr><td>Decoration Charges</td><td style="text-align: right;">${formatCurrency(booking.decoration_charges)}</td></tr>` : ''}
+          ${booking.other_charges > 0 ? `<tr><td>Other Charges</td><td style="text-align: right;">${formatCurrency(booking.other_charges)}</td></tr>` : ''}
+          ${booking.discount > 0 ? `<tr style="color: green;"><td>Discount</td><td style="text-align: right;">-${formatCurrency(booking.discount)}</td></tr>` : ''}
           <tr>
             <td>GST (${booking.gst_percentage || 18}%)</td>
             <td style="text-align: right;">${formatCurrency(booking.gst || 0)}</td>
           </tr>
-          
           <tr class="total-row">
             <td><strong>TOTAL AMOUNT</strong></td>
-            <td style="text-align: right; font-size: 18px;">
-              <strong>${formatCurrency(booking.total_amount)}</strong>
-            </td>
+            <td style="text-align: right; font-size: 18px;"><strong>${formatCurrency(booking.total_amount)}</strong></td>
           </tr>
         </tbody>
       </table>
       
-      <!-- Payment Summary -->
       ${booking.advance_paid > 0 ? `
         <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-top: 20px;">
           <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
@@ -2505,7 +3399,6 @@ class FunctionRoomController {
         </div>
       ` : ''}
       
-      <!-- Special Requests -->
       ${booking.special_requests ? `
         <div style="margin-top: 30px; padding: 15px; background-color: #f0f8ff; border-radius: 8px;">
           <strong>Special Requests:</strong><br>
@@ -2513,7 +3406,6 @@ class FunctionRoomController {
         </div>
       ` : ''}
       
-      <!-- Footer -->
       <div class="footer">
         <div style="margin-bottom: 20px;">
           <div><strong>Terms & Conditions:</strong></div>
@@ -2524,11 +3416,7 @@ class FunctionRoomController {
             4. GST is applicable as per the rates mentioned
           </div>
         </div>
-        
-        <div class="barcode">
-          ${booking.booking_reference}
-        </div>
-        
+        <div class="barcode">${booking.booking_reference}</div>
         <div style="margin-top: 20px; font-size: 11px; color: #999;">
           Generated on: ${new Date().toLocaleString('en-IN')}
         </div>
@@ -2537,10 +3425,8 @@ class FunctionRoomController {
     </html>
     `;
 
-      // Set response headers for HTML download
       res.setHeader('Content-Type', 'text/html');
       res.setHeader('Content-Disposition', `attachment; filename="function-invoice-${booking.booking_reference}.html"`);
-
       res.send(invoiceHTML);
 
     } catch (error) {
@@ -2551,7 +3437,113 @@ class FunctionRoomController {
         message: 'Internal server error: ' + error.message
       });
     }
+  };
+  // Get all refunds for a booking
+  getBookingRefunds = async (req, res) => {
+    try {
+      const { bookingId } = req.params;
+      const hotelId = req.user.hotel_id;
+
+      const [refunds] = await pool.execute(
+        `SELECT r.*, u.name as processed_by_name 
+       FROM function_booking_refunds r
+       LEFT JOIN users u ON r.processed_by = u.id
+       WHERE r.function_booking_id  = ? AND r.hotel_id = ?
+       ORDER BY r.created_at DESC`,
+        [bookingId, hotelId]
+      );
+
+      res.json({
+        success: true,
+        data: refunds
+      });
+
+    } catch (error) {
+      console.error('❌ Get booking refunds error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'SERVER_ERROR',
+        message: error.message
+      });
+    }
+  };
+
+  // Update refund status (mark as completed)
+  updateRefundStatus = async (req, res) => {
+    try {
+      const { refundId } = req.params;
+      const hotelId = req.user.hotel_id;
+      const { refund_status, transaction_id, notes } = req.body;
+
+      const [result] = await pool.execute(
+        `UPDATE function_booking_refunds 
+       SET refund_status = ?,
+           transaction_id = COALESCE(?, transaction_id),
+           notes = CONCAT(notes, '\n', ?),
+           processed_at = NOW()
+       WHERE id = ? AND hotel_id = ?`,
+        [refund_status, transaction_id, notes || '', refundId, hotelId]
+      );
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'REFUND_NOT_FOUND',
+          message: 'Refund record not found'
+        });
+      }
+
+      // Get updated refund
+      const [updatedRefund] = await pool.execute(
+        'SELECT * FROM function_booking_refunds WHERE id = ?',
+        [refundId]
+      );
+
+      res.json({
+        success: true,
+        message: 'Refund status updated successfully',
+        data: updatedRefund[0]
+      });
+
+    } catch (error) {
+      console.error('❌ Update refund status error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'SERVER_ERROR',
+        message: error.message
+      });
+    }
+  };
+
+  // Add this to functionRoomController.js
+
+// Get payment/transaction history for a booking
+getBookingPaymentHistory = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const hotelId = req.user.hotel_id;
+
+    const [transactions] = await pool.execute(
+      `SELECT * FROM function_booking_amounts 
+       WHERE function_booking_id = ? AND hotel_id = ?
+       ORDER BY created_at DESC`,
+      [bookingId, hotelId]
+    );
+
+    res.json({
+      success: true,
+      data: transactions
+    });
+
+  } catch (error) {
+    console.error('❌ Get payment history error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'SERVER_ERROR',
+      message: error.message
+    });
   }
+};
 }
 
 module.exports = new FunctionRoomController();

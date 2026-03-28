@@ -90,8 +90,27 @@ interface CollectionSummary {
   total_amount: number;
   handed_over_cash: number;
   pending_handover: number;
+  previous_balance?: number;
+  todays_collection?: number;
   cash_percentage: number;
   online_percentage: number;
+  breakdown?: { name: string; amount: number }[];
+}
+
+interface HandoverRecord {
+  id: number;
+  hotel_id: number;
+  total_collected?: number;
+  handover_amount: number;
+  handover_date: string;
+  handover_to: number;
+  handover_to_name?: string;
+  handover_type: 'full' | 'partial' | 'bulk' | 'shift' | string;
+  status: 'pending' | 'completed';
+  remarks: string;
+  created_by: number;
+  created_by_name?: string;
+  created_at: string;
 }
 
 interface CashBooking {
@@ -116,15 +135,21 @@ const Collections = () => {
     total_amount: 0,
     handed_over_cash: 0,
     pending_handover: 0,
+    previous_balance: 0,
+    todays_collection: 0,
     cash_percentage: 0,
     online_percentage: 0
   });
+  const [handoverHistory, setHandoverHistory] = useState<HandoverRecord[]>([]);
+  const [loadingHandoverHistory, setLoadingHandoverHistory] = useState(false);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [loadingCashBookings, setLoadingCashBookings] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(10);
   const [totalRecords, setTotalRecords] = useState(0);
+  const [staff, setStaff] = useState<any[]>([]);
+  const [handoverTypes, setHandoverTypes] = useState<string[]>([]);
 
   // Date filters
   const [startDate, setStartDate] = useState(() => {
@@ -143,12 +168,14 @@ const Collections = () => {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Handover modal state
-  const [showHandoverModal, setShowHandoverModal] = useState(false);
-  const [selectedCollection, setSelectedCollection] = useState<Collection | null>(null);
-  const [handoverAmount, setHandoverAmount] = useState('');
-  const [handoverTo, setHandoverTo] = useState('owner');
-  const [handoverRemarks, setHandoverRemarks] = useState('');
-  const [handoverSubmitting, setHandoverSubmitting] = useState(false);
+  const [showGeneralHandoverModal, setShowGeneralHandoverModal] = useState(false);
+  const [generalHandoverSubmitting, setGeneralHandoverSubmitting] = useState(false);
+  const [generalHandoverData, setGeneralHandoverData] = useState({
+    amount: '',
+    handed_to: 'owner',
+    remarks: '',
+    handover_type: 'cash'
+  });
 
   // New collection modal state
   const [showNewCollectionModal, setShowNewCollectionModal] = useState(false);
@@ -167,9 +194,93 @@ const Collections = () => {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Active tab
-  const [activeTab, setActiveTab] = useState('all');
+  const [activeTab, setActiveTab] = useState<string>('all');
+
+  // Function hall toggle state
+  const [functionHallEnabled, setFunctionHallEnabled] = useState<boolean>(() => {
+    const saved = localStorage.getItem('functionHallEnabled');
+    return saved !== null ? JSON.parse(saved) : true;
+  });
+
+  // Listen for function hall toggle events
+  useEffect(() => {
+    const handleToggle = (event: any) => {
+      if (event.detail && typeof event.detail.enabled === 'boolean') {
+        setFunctionHallEnabled(event.detail.enabled);
+      }
+    };
+
+    window.addEventListener('functionHallToggle', handleToggle);
+    return () => window.removeEventListener('functionHallToggle', handleToggle);
+  }, []);
+
+  // Fetch staff users for handover recipient
+  const fetchStaff = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`${backendUrl}/users`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await response.json();
+      if (data.success) {
+        setStaff(data.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching staff:', error);
+    }
+  };
+
+  // Fetch handover types for dropdown
+  const fetchHandoverTypes = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`${backendUrl}/collections/handover-types`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await response.json();
+      if (data.success) {
+        setHandoverTypes(data.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching types:', error);
+    }
+  };
 
   const backendUrl = import.meta.env.VITE_BACKEND_URL;
+
+  // Fetch handover history from API
+  const fetchHandoverHistory = async () => {
+    setLoadingHandoverHistory(true);
+    try {
+      const token = localStorage.getItem('authToken');
+      if (!token) throw new Error('No authentication token found');
+
+      const params = new URLSearchParams({
+        startDate,
+        endDate
+      });
+
+      const response = await fetch(
+        `${backendUrl}/collections/handovers?${params.toString()}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const data = await response.json();
+      if (data.success) {
+        setHandoverHistory(data.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching handover history:', error);
+    } finally {
+      setLoadingHandoverHistory(false);
+    }
+  };
 
   // Fetch collections from API
 
@@ -189,9 +300,17 @@ const Collections = () => {
         search: searchQuery
       });
 
-      if (paymentMode !== 'all') params.append('paymentMode', paymentMode);
-      if (handoverStatus !== 'all') params.append('handoverStatus', handoverStatus);
-      if (searchQuery) params.append('search', searchQuery);
+      // Map activeTab to server parameters if not 'all'
+      // This ensures pagination works correctly for 'Handed' and 'Pending' tabs
+      if (activeTab === 'cash') params.append('paymentMode', 'cash');
+      else if (activeTab === 'online') params.append('paymentMode', 'online');
+      else if (activeTab === 'handed') params.append('handoverStatus', 'handed_over');
+
+      // Manual filters take precedence if they are not 'all'
+      if (paymentMode !== 'all') params.set('paymentMode', paymentMode);
+      if (handoverStatus !== 'all') params.set('handoverStatus', handoverStatus);
+
+      if (searchQuery) params.set('search', searchQuery);
 
       const response = await fetch(
         `${backendUrl}/collections?${params.toString()}`,
@@ -220,8 +339,10 @@ const Collections = () => {
           total_cash: data.data.summary?.total_cash || 0,
           total_online: data.data.summary?.total_online || 0,
           total_amount: data.data.summary?.total_amount || 0,
-          handed_over_cash: data.data.summary?.handed_over_cash || 0,  // This should be 1050
-          pending_handover: data.data.summary?.pending_handover || 0,  // This should be 6915.5
+          handed_over_cash: data.data.summary?.handed_over_cash || 0,
+          pending_handover: data.data.summary?.pending_handover || 0,
+          previous_balance: data.data.summary?.previous_balance || 0,
+          todays_collection: data.data.summary?.todays_collection || 0,
           cash_percentage: data.data.summary?.cash_percentage || 0,
           online_percentage: data.data.summary?.online_percentage || 0
         };
@@ -290,7 +411,13 @@ const Collections = () => {
       const data = await response.json();
       console.log("cash collection", data);
       if (data.success) {
-        setCashBookings(data.data || []);
+        const parsedData = (data.data || []).map((booking: any) => ({
+          ...booking,
+          booking_amount: Number(booking.booking_amount) || 0,
+          pending_amount: Number(booking.pending_amount) || 0,
+          collected_amount: Number(booking.collected_amount) || 0
+        }));
+        setCashBookings(parsedData);
       } else {
         throw new Error(data.message || 'Failed to fetch cash bookings');
       }
@@ -307,85 +434,64 @@ const Collections = () => {
     }
   };
 
-  // Handle cash handover
-  const handleHandover = (collection: Collection) => {
-    if (collection.payment_mode !== 'cash') {
-      toast({
-        title: "Error",
-        description: "Only cash collections can be handed over",
-        variant: "destructive"
-      });
-      return;
-    }
+  // Removed handleHandover as per-booking handover is replaced by bulk.
 
-    if (collection.handover_status === 'handed_over') {
-      toast({
-        title: "Info",
-        description: "Cash already handed over completely",
-        variant: "default"
-      });
-      return;
-    }
-
-    const availableAmount = collection.amount - (collection.handover_amount || 0);
-
-    setSelectedCollection(collection);
-    setHandoverAmount(availableAmount.toString());
-    setHandoverTo('owner');
-    setHandoverRemarks('');
-    setShowHandoverModal(true);
+  // Handle general handover (bulk)
+  const handleGeneralHandover = () => {
+    setGeneralHandoverData({
+      amount: summary.pending_handover.toString(),
+      handed_to: 'owner',
+      remarks: '',
+      handover_type: 'cash'
+    });
+    setShowGeneralHandoverModal(true);
   };
 
-  // Submit handover to API
-  const submitHandover = async () => {
-    if (!selectedCollection) return;
-
-    setHandoverSubmitting(true);
+  const submitGeneralHandover = async () => {
     try {
-      const token = localStorage.getItem('authToken');
-      if (!token) {
-        throw new Error('No authentication token found');
-      }
-
-      const response = await fetch(
-        `${backendUrl}/collections/${selectedCollection.id}/handover`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            amount: parseFloat(handoverAmount),
-            handed_to: handoverTo,
-            remarks: handoverRemarks
-          })
-        }
-      );
+      setGeneralHandoverSubmitting(true);
+      const token = localStorage.getItem('authToken'); // Changed 'token' to 'authToken' for consistency
+      const response = await fetch(`${backendUrl}/collections/bulk-handover`, { // Changed VITE_API_URL to backendUrl
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          ...generalHandoverData,
+          handover_type: parseFloat(generalHandoverData.amount) >= summary.pending_handover ? 'full' : 'partial',
+          total_collected: summary.pending_handover
+        })
+      });
 
       const data = await response.json();
       if (data.success) {
         toast({
           title: "Success",
-          description: data.message || "Cash handed over successfully",
-          variant: "default"
+          description: "Total cash handed over successfully",
         });
-        setShowHandoverModal(false);
-        fetchCollections(); // Refresh data
+        setShowGeneralHandoverModal(false);
+        fetchCollections();
+        fetchHandoverHistory();
       } else {
-        throw new Error(data.message || 'Failed to handover cash');
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: data.message || "Failed to handover cash",
+        });
       }
     } catch (error) {
-      console.error('Error handing over cash:', error);
       toast({
+        variant: "destructive",
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to handover cash",
-        variant: "destructive"
+        description: "An unexpected error occurred",
       });
     } finally {
-      setHandoverSubmitting(false);
+      setGeneralHandoverSubmitting(false);
     }
   };
+
+  // Removed submitHandover as per-booking handover is replaced by bulk.
 
   // Submit new collection to API
   const submitNewCollection = async () => {
@@ -468,8 +574,14 @@ const Collections = () => {
         endDate
       });
 
-      if (paymentMode !== 'all') params.append('paymentMode', paymentMode);
-      if (handoverStatus !== 'all') params.append('handoverStatus', handoverStatus);
+      // Map activeTab for export filtering
+      if (activeTab === 'cash') params.append('paymentMode', 'cash');
+      else if (activeTab === 'online') params.append('paymentMode', 'online');
+      else if (activeTab === 'handed') params.append('handoverStatus', 'handed_over');
+
+      if (paymentMode !== 'all') params.set('paymentMode', paymentMode);
+      if (handoverStatus !== 'all') params.set('handoverStatus', handoverStatus);
+      if (searchQuery) params.append('search', searchQuery);
 
       const response = await fetch(
         `${backendUrl}/collections/export?${params.toString()}`,
@@ -536,8 +648,7 @@ const Collections = () => {
     if (activeTab === 'all') return true;
     if (activeTab === 'cash') return collection.payment_mode === 'cash';
     if (activeTab === 'online') return ['online', 'card', 'upi'].includes(collection.payment_mode);
-    if (activeTab === 'pending') return collection.handover_status === 'pending';
-    if (activeTab === 'handed') return collection.handover_status === 'handed_over';
+    if (activeTab === 'handed') return collection.handover_status === 'handed_over' || collection.handover_status === 'partially_handed_over';
     return true;
   });
 
@@ -556,9 +667,13 @@ const Collections = () => {
 
   // Fetch data when filters or tab changes
   useEffect(() => {
-    fetchCollections();
-    if (activeTab === 'cash-bookings') {
-      fetchCashBookings();
+    fetchStaff();
+    fetchHandoverTypes();
+    if (activeTab === 'handed') {
+      fetchHandoverHistory();
+      fetchCollections(); // Still fetch for summary
+    } else {
+      fetchCollections();
     }
   }, [startDate, endDate, activeTab, currentPage, pageSize]);
 
@@ -654,7 +769,7 @@ const Collections = () => {
             </Button>
           </div>
         </div>
-          {!functionHallEnabled && (
+        {!functionHallEnabled && (
           <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-3 py-2 rounded-md text-xs flex items-center gap-2 mb-6">
             <AlertCircle className="h-4 w-4" />
             <span>Function Hall revenue is excluded. Enable it in Overview to include it in Collections.</span>
@@ -662,13 +777,13 @@ const Collections = () => {
         )}
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4">
           <Card className="border-l-4 border-l-green-500 shadow-sm">
-            <CardContent className="p-3 sm:p-6">
+            <CardContent className="p-3 sm:p-4">
               <div className="flex items-center justify-between">
                 <div className="min-w-0">
-                  <div className="text-lg sm:text-2xl font-bold text-green-600 truncate">
-                    {formatCurrency(summary.total_cash)}
+                  <div className="text-sm sm:text-lg font-bold text-green-600 truncate">
+                    {formatCurrency(summary.pending_handover)}
                   </div>
                   <p className="text-xs sm:text-sm text-muted-foreground truncate">Cash</p>
                 </div>
@@ -676,18 +791,15 @@ const Collections = () => {
                   <Banknote className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
                 </div>
               </div>
-              <div className="mt-1 sm:mt-2 text-xs">
-                <span className="text-muted-foreground hidden sm:inline">Percentage: </span>
-                <span className="font-medium">{summary.cash_percentage.toFixed(1)}%</span>
-              </div>
+              {/* Subtext removed as per-request */}
             </CardContent>
           </Card>
 
           <Card className="border-l-4 border-l-blue-500 shadow-sm">
-            <CardContent className="p-3 sm:p-6">
+            <CardContent className="p-3 sm:p-4">
               <div className="flex items-center justify-between">
                 <div className="min-w-0">
-                  <div className="text-lg sm:text-2xl font-bold text-blue-600 truncate">
+                  <div className="text-sm sm:text-lg font-bold text-blue-600 truncate">
                     {formatCurrency(summary.total_online)}
                   </div>
                   <p className="text-xs sm:text-sm text-muted-foreground truncate">Online</p>
@@ -696,18 +808,15 @@ const Collections = () => {
                   <CreditCard className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
                 </div>
               </div>
-              <div className="mt-1 sm:mt-2 text-xs">
-                <span className="text-muted-foreground hidden sm:inline">Percentage: </span>
-                <span className="font-medium">{summary.online_percentage.toFixed(1)}%</span>
-              </div>
+              {/* Subtext removed as per-request */}
             </CardContent>
           </Card>
 
           <Card className="border-l-4 border-l-purple-500 shadow-sm">
-            <CardContent className="p-3 sm:p-6">
+            <CardContent className="p-3 sm:p-4">
               <div className="flex items-center justify-between">
                 <div className="min-w-0">
-                  <div className="text-lg sm:text-2xl font-bold text-purple-600 truncate">
+                  <div className="text-sm sm:text-lg font-bold text-purple-600 truncate">
                     {formatCurrency(summary.total_amount)}
                   </div>
                   <p className="text-xs sm:text-sm text-muted-foreground truncate">Total</p>
@@ -716,432 +825,361 @@ const Collections = () => {
                   <IndianRupee className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600" />
                 </div>
               </div>
-              <div className="mt-1 sm:mt-2 text-xs truncate">
-                <span className="text-muted-foreground hidden sm:inline">Date Range: </span>
-                <span className="font-medium text-[10px] sm:text-xs">
-                  {format(new Date(startDate), 'dd/MM')} - {format(new Date(endDate), 'dd/MM')}
-                </span>
-              </div>
+              {/* Subtext removed as per-request */}
             </CardContent>
           </Card>
 
           <Card className="border-l-4 border-l-yellow-500 shadow-sm">
-            <CardContent className="p-3 sm:p-6">
+            <CardContent className="p-3 sm:p-4">
               <div className="flex items-center justify-between">
                 <div className="min-w-0">
-                  <div className="text-lg sm:text-2xl font-bold text-yellow-600 truncate">
-                    {formatCurrency(summary.pending_handover)}
+                  <div className="text-sm sm:text-lg font-bold text-yellow-600 truncate">
+                    {formatCurrency(summary.handed_over_cash)}
                   </div>
-                  <p className="text-xs sm:text-sm text-muted-foreground truncate">Pending</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground truncate">Handed Over</p>
                 </div>
                 <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-yellow-100 flex items-center justify-center flex-shrink-0">
                   <Hand className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-600" />
                 </div>
               </div>
-              <div className="mt-1 sm:mt-2 text-xs truncate">
-                <span className="text-muted-foreground hidden sm:inline">Handed: </span>
-                <span className="font-medium text-[10px] sm:text-xs">
-                  {formatCurrency(summary.handed_over_cash)}
-                </span>
-              </div>
+              {/* Subtext removed as per-request */}
             </CardContent>
           </Card>
         </div>
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
-          <div className="overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
-            <TabsList className="inline-flex w-max min-w-full sm:grid sm:grid-cols-2 md:grid-cols-7 gap-1 bg-transparent sm:bg-muted p-1">
-              <TabsTrigger value="all" className="text-xs whitespace-nowrap px-3 py-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                All
-              </TabsTrigger>
-              <TabsTrigger value="cash" className="text-xs whitespace-nowrap px-3 py-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                Cash
-              </TabsTrigger>
-              <TabsTrigger value="online" className="text-xs whitespace-nowrap px-3 py-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                Online
-              </TabsTrigger>
-              <TabsTrigger value="pending" className="text-xs whitespace-nowrap px-3 py-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                Pending
-              </TabsTrigger>
-              <TabsTrigger value="handed" className="text-xs whitespace-nowrap px-3 py-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                Handed
-              </TabsTrigger>
-              <TabsTrigger value="cash-bookings" className="text-xs whitespace-nowrap px-3 py-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                Cash Bookings
-              </TabsTrigger>
-            </TabsList>
-          </div>
+          <TabsList className="grid grid-cols-4 w-full h-10 bg-slate-100 p-1 rounded-lg border border-slate-200">
+            <TabsTrigger
+              value="all"
+              className="h-full rounded-md text-[11px] sm:text-xs font-medium transition-none data-[state=active]:bg-cyan-600 data-[state=active]:text-white shadow-none"
+            >
+              All
+            </TabsTrigger>
+            <TabsTrigger
+              value="cash"
+              className="h-full rounded-md text-[11px] sm:text-xs font-medium transition-none data-[state=active]:bg-cyan-600 data-[state=active]:text-white shadow-none"
+            >
+              Cash
+            </TabsTrigger>
+            <TabsTrigger
+              value="online"
+              className="h-full rounded-md text-[11px] sm:text-xs font-medium transition-none data-[state=active]:bg-cyan-600 data-[state=active]:text-white shadow-none"
+            >
+              Online
+            </TabsTrigger>
+            <TabsTrigger
+              value="handed"
+              className="h-full rounded-md text-[11px] sm:text-xs font-medium transition-none data-[state=active]:bg-cyan-600 data-[state=active]:text-white shadow-none"
+            >
+              Handed
+            </TabsTrigger>
+          </TabsList>
         </Tabs>
 
         {/* Filters for collections tabs */}
-        {(activeTab === 'all' || activeTab === 'cash' || activeTab === 'online' || activeTab === 'pending' || activeTab === 'handed') && (
+        {(activeTab === 'all' || activeTab === 'cash' || activeTab === 'online' || activeTab === 'handed') && (
           <Card className="mb-6">
-            <CardContent className="p-4 sm:p-6">
-              <div className="space-y-4">
-                {/* Date filters - stacked on mobile */}
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-2">
-                  <div>
-                    <Label htmlFor="startDate" className="text-xs sm:text-sm">Start Date</Label>
-                    <div className="flex items-center gap-1 sm:gap-2 mt-1">
-                      <Calendar className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                      <Input
-                        id="startDate"
-                        type="date"
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        className="h-9 text-xs sm:text-sm"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <Label htmlFor="endDate" className="text-xs sm:text-sm">End Date</Label>
-                    <div className="flex items-center gap-1 sm:gap-2 mt-1">
-                      <Calendar className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                      <Input
-                        id="endDate"
-                        type="date"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        min={startDate}
-                        className="h-9 text-xs sm:text-sm"
-                      />
-                    </div>
+            <CardContent className="p-3 sm:p-4">
+              {/* Unified single-line filter bar */}
+              <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 items-end gap-2 sm:gap-3">
+                {/* Start Date */}
+                <div>
+                  <Label htmlFor="startDate" className="text-[10px] sm:text-xs">Start Date</Label>
+                  <div className="relative mt-1">
+                    <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input
+                      id="startDate"
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="h-8 pl-8 text-xs sm:text-sm"
+                    />
                   </div>
                 </div>
 
-                {/* Filter controls - stacked on mobile */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label htmlFor="paymentMode" className="text-xs sm:text-sm">Payment Mode</Label>
-                    <Select value={paymentMode} onValueChange={setPaymentMode}>
-                      <SelectTrigger className="h-9 mt-1 text-xs">
-                        <SelectValue placeholder="All Modes" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Modes</SelectItem>
-                        <SelectItem value="cash">Cash</SelectItem>
-                        <SelectItem value="online">Online</SelectItem>
-                        <SelectItem value="card">Card</SelectItem>
-                        <SelectItem value="upi">UPI</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor="handoverStatus" className="text-xs sm:text-sm">Handover Status</Label>
-                    <Select value={handoverStatus} onValueChange={setHandoverStatus}>
-                      <SelectTrigger className="h-9 mt-1 text-xs">
-                        <SelectValue placeholder="All Status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Status</SelectItem>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="handed_over">Handed Over</SelectItem>
-                        <SelectItem value="partially_handed_over">Partially</SelectItem>
-                      </SelectContent>
-                    </Select>
+                {/* End Date */}
+                <div>
+                  <Label htmlFor="endDate" className="text-[10px] sm:text-xs">End Date</Label>
+                  <div className="relative mt-1">
+                    <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input
+                      id="endDate"
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      min={startDate}
+                      className="h-8 pl-8 text-xs sm:text-sm"
+                    />
                   </div>
                 </div>
 
-                {/* Search and Filter button - full width on mobile */}
-                <div className="grid grid-cols-1 gap-3">
-                  <div>
-                    <Label htmlFor="search" className="text-xs sm:text-sm">Search</Label>
-                    <div className="flex items-center gap-1 sm:gap-2 mt-1">
-                      <Search className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                      <Input
-                        id="search"
-                        placeholder="Search guest or room..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="h-9 text-xs sm:text-sm flex-1"
-                      />
-                    </div>
+                {/* Search */}
+                <div className="md:col-span-1 lg:col-span-2">
+                  <Label htmlFor="search" className="text-[10px] sm:text-xs">Search</Label>
+                  <div className="relative mt-1">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input
+                      id="search"
+                      placeholder="Guest or room..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="h-8 pl-8 text-xs sm:text-sm"
+                    />
                   </div>
-                  <Button
-                    onClick={fetchCollections}
-                    className="w-full h-9"
-                    disabled={loading}
-                  >
-                    <Filter className="h-4 w-4 mr-2" />
-                    {loading ? 'Loading...' : 'Apply Filters'}
-                  </Button>
                 </div>
+
+                {/* Apply Button */}
+                <Button
+                  onClick={fetchCollections}
+                  className="h-8 text-xs font-semibold w-full bg-cyan-600 hover:bg-cyan-700"
+                  disabled={loading}
+                >
+                  <Filter className="h-3 w-3 mr-2" />
+                  {loading ? '...' : 'Apply Filters'}
+                </Button>
               </div>
             </CardContent>
           </Card>
         )}
 
         {/* Collections Table */}
-        {(activeTab === 'all' || activeTab === 'cash' || activeTab === 'online' || activeTab === 'pending' || activeTab === 'handed') && (
-          <Card>
-            <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 sm:px-6">
-              <div className="min-w-0">
-                <CardTitle className="text-base sm:text-lg">Collections</CardTitle>
-                <CardDescription className="text-xs sm:text-sm">
-                  Showing {filteredCollections.length} of {totalRecords} collections
-                </CardDescription>
-              </div>
-              <Badge variant="outline" className="text-xs sm:text-sm whitespace-nowrap self-start sm:self-auto">
-                Total: {formatCurrency(summary.total_amount)}
-              </Badge>
-            </CardHeader>
-            <CardContent className="p-0 sm:p-6">
-              {loading ? (
-                <div className="text-center py-8 px-4">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-                  <p className="text-muted-foreground mt-2 text-sm">Loading collections...</p>
-                </div>
-              ) : filteredCollections.length === 0 ? (
-                <div className="text-center py-8 px-4 text-muted-foreground">
-                  <FileText className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">No collections found for the selected criteria.</p>
-                  <p className="text-xs mt-1">Try adjusting your filters or record a new collection.</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <div className="inline-block min-w-full align-middle">
-                    <Table>
-
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="whitespace-nowrap text-xs sm:text-sm px-2 sm:px-4">
-                            <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('collection_date')}>
-                              Date
-                              <ArrowUpDown className="h-3 w-3" />
-                            </div>
-                          </TableHead>
-                          <TableHead className="whitespace-nowrap text-xs sm:text-sm px-2 sm:px-4">Guest / Room</TableHead>
-                          <TableHead className="whitespace-nowrap text-xs sm:text-sm px-2 sm:px-4">Payment</TableHead>
-                          <TableHead className="whitespace-nowrap text-xs sm:text-sm px-2 sm:px-4">
-                            <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('amount')}>
-                              Amount
-                              <ArrowUpDown className="h-3 w-3" />
-                            </div>
-                          </TableHead>
-                          <TableHead className="whitespace-nowrap text-xs sm:text-sm px-2 sm:px-4 hidden md:table-cell">Collected By</TableHead>
-                          <TableHead className="whitespace-nowrap text-xs sm:text-sm px-2 sm:px-4">Handover</TableHead>
-                          <TableHead className="whitespace-nowrap text-xs sm:text-sm px-2 sm:px-4">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredCollections.map((collection) => (
-                          <TableRow key={collection.id} className="hover:bg-muted/50">
-                            <TableCell className="whitespace-nowrap px-2 sm:px-4">
-                              <div className="text-xs sm:text-sm font-medium">
-                                {new Date(collection.collection_date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit' })}
-                              </div>
-                              {collection.transaction_id && (
-                                <div className="text-xs text-muted-foreground truncate max-w-[80px] sm:max-w-[120px]">
-                                  {collection.transaction_id.substring(0, 8)}...
-                                </div>
-                              )}
-                            </TableCell>
-                            <TableCell className="whitespace-nowrap px-2 sm:px-4">
-                              <div className="text-xs sm:text-sm font-medium truncate max-w-[100px] sm:max-w-[150px]">
-                                {collection.guest_name || 'Walk-in'}
-                              </div>
-                              {collection.room_number && (
-                                <div className="text-xs text-muted-foreground">
-                                  R{collection.room_number}
-                                </div>
-                              )}
-                            </TableCell>
-                            <TableCell className="whitespace-nowrap px-2 sm:px-4">
-                              {getPaymentModeBadge(collection.payment_mode)}
-                            </TableCell>
-                            <TableCell className="whitespace-nowrap px-2 sm:px-4 font-bold text-xs sm:text-sm">
-                              <div className="flex items-center gap-1">
-                                <IndianRupee className="h-3 w-3" />
-                                {collection.amount.toFixed(0)}
-                              </div>
-                            </TableCell>
-                            <TableCell className="whitespace-nowrap px-2 sm:px-4 hidden md:table-cell">
-                              <div className="text-xs sm:text-sm">{collection.collected_by_name || 'Staff'}</div>
-                            </TableCell>
-                            <TableCell className="whitespace-nowrap px-2 sm:px-4">
-                              <div className="space-y-1">
-                                {getHandoverStatusBadge(collection.handover_status)}
-                              </div>
-                            </TableCell>
-                            <TableCell className="whitespace-nowrap px-2 sm:px-4">
-                              {collection.payment_mode === 'cash' && collection.handover_status !== 'handed_over' && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleHandover(collection)}
-                                  className="h-7 sm:h-8 px-2 sm:px-3 text-xs"
-                                >
-                                  <Hand className="h-3 w-3 mr-1" />
-                                  <span className="hidden sm:inline">Handover</span>
-                                </Button>
-                              )}
-                            </TableCell>
+        {(activeTab === 'all' || activeTab === 'cash' || activeTab === 'online' || activeTab === 'handed') && (
+          <div className="space-y-4">
+            {/* Handed Tab Special Summary */}
+            {activeTab === 'handed' && (
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between gap-2 px-4 py-3">
+                  <div className="flex-1 min-w-0">
+                    <CardTitle className="text-sm sm:text-lg text-blue-700 flex items-center gap-2">
+                      <Banknote className="h-4 w-4 sm:h-5 sm:w-5" />
+                      Handover Ledger
+                    </CardTitle>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={handleGeneralHandover}
+                      className="bg-blue-600 hover:bg-blue-700 text-white border-none h-8 text-xs shadow-sm font-semibold px-4"
+                    >
+                      <Hand className="h-3.5 w-3.5 mr-2" />
+                      Handover
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0 sm:p-6">
+                  {loadingHandoverHistory ? (
+                    <div className="text-center py-12">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                      <p className="text-muted-foreground mt-2">Loading ledger...</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-slate-50">
+                            <TableHead className="w-10 text-[10px] sm:text-xs">Sno</TableHead>
+                            <TableHead className="text-[10px] sm:text-xs">Date & Time</TableHead>
+                            <TableHead className="text-[10px] sm:text-xs">Handover Amount</TableHead>
+                            <TableHead className="text-[10px] sm:text-xs">Handed By</TableHead>
+                            <TableHead className="text-[10px] sm:text-xs">Handed To</TableHead>
+                            <TableHead className="text-[10px] sm:text-xs">Type</TableHead>
+                            <TableHead className="text-[10px] sm:text-xs">Remarks</TableHead>
+                            <TableHead className="text-center text-[10px] sm:text-xs">Status</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-
-            {/* Pagination UI */}
-            {!loading && totalRecords > 0 && (
-              <div className="px-4 pb-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4 border-t pt-4">
-                <div className="flex items-center gap-2 order-2 sm:order-1">
-                  <span className="text-xs text-muted-foreground">Rows per page:</span>
-                  <Select
-                    value={pageSize.toString()}
-                    onValueChange={(val) => {
-                      setPageSize(parseInt(val));
-                      setCurrentPage(0);
-                    }}
-                  >
-                    <SelectTrigger className="h-8 w-[70px] text-xs">
-                      <SelectValue placeholder={pageSize.toString()} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="10">10</SelectItem>
-                      <SelectItem value="20">20</SelectItem>
-                      <SelectItem value="50">50</SelectItem>
-                      <SelectItem value="100">100</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex items-center gap-2 order-1 sm:order-2">
-                  <div className="text-xs font-medium mr-2">
-                    Page {currentPage + 1} of {Math.ceil(totalRecords / pageSize)}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => setCurrentPage(0)}
-                      disabled={currentPage === 0}
-                    >
-                      <ChevronsLeft className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => setCurrentPage(prev => Math.max(0, prev - 1))}
-                      disabled={currentPage === 0}
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => setCurrentPage(prev => prev + 1)}
-                      disabled={(currentPage + 1) * pageSize >= totalRecords}
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => setCurrentPage(Math.ceil(totalRecords / pageSize) - 1)}
-                      disabled={(currentPage + 1) * pageSize >= totalRecords}
-                    >
-                      <ChevronsRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
+                        </TableHeader>
+                        <TableBody>
+                          {handoverHistory.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                                <FileText className="h-12 w-12 mx-auto mb-2 opacity-30" />
+                                <p className="text-sm font-medium">No handover records found</p>
+                                <p className="text-xs mt-1">Adjust filters or settle cash balance to see data here.</p>
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            handoverHistory.map((record, index) => (
+                              <TableRow key={record.id} className="hover:bg-muted/30">
+                                <TableCell className="text-[10px] sm:text-xs text-muted-foreground">
+                                  {handoverHistory.length - index}
+                                </TableCell>
+                                <TableCell className="whitespace-nowrap">
+                                  <div className="text-xs sm:text-sm font-medium">{format(new Date(record.handover_date), 'dd MMM yyyy')}</div>
+                                  <div className="text-[10px] text-muted-foreground">{format(new Date(record.handover_date), 'hh:mm a')}</div>
+                                </TableCell>
+                                <TableCell className="font-bold text-blue-700 text-xs sm:text-sm">
+                                  {formatCurrency(record.handover_amount)}
+                                </TableCell>
+                                <TableCell className="text-xs sm:text-sm text-slate-600">
+                                  {record.created_by_name || 'Staff'}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex items-center gap-2">
+                                    <Users className="h-3 w-3 sm:h-4 sm:w-4 text-slate-400" />
+                                    <div className="text-[10px] sm:text-sm capitalize font-medium">{record.handover_to_name || record.handover_to}</div>
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant="outline" className={`text-[9px] px-1.5 py-0 uppercase font-bold tracking-wider ${record.handover_type === 'full' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-orange-50 text-orange-700 border-orange-200'}`}>
+                                    {record.handover_type || 'Bulk'}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="max-w-[150px] sm:max-w-[200px] truncate text-[10px] sm:text-xs text-muted-foreground">
+                                  {record.remarks || '-'}
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  <Badge className="bg-green-100/80 text-green-800 border-green-200 text-[10px] px-1.5 py-0">
+                                    Completed
+                                  </Badge>
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             )}
-          </Card>
+
+            {activeTab !== 'handed' && (
+              <Card>
+                <CardContent className="p-0 sm:p-2">
+                  {loading ? (
+                    <div className="text-center py-8 px-4">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                      <p className="text-muted-foreground mt-2 text-sm">Loading collections...</p>
+                    </div>
+                  ) : filteredCollections.length === 0 ? (
+                    <div className="text-center py-8 px-4 text-muted-foreground">
+                      <FileText className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">No collections found for the selected criteria.</p>
+                      <p className="text-xs mt-1">Try adjusting your filters or record a new collection.</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <div className="inline-block min-w-full align-middle">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="bg-slate-50">
+                              <TableHead className="w-10 text-[10px] sm:text-xs px-2 sm:px-4">Sno</TableHead>
+                              <TableHead className="whitespace-nowrap text-[10px] sm:text-xs px-2 sm:px-4">
+                                <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('collection_date')}>
+                                  Date
+                                  <ArrowUpDown className="h-3 w-3" />
+                                </div>
+                              </TableHead>
+                              <TableHead className="whitespace-nowrap text-[10px] sm:text-xs px-2 sm:px-4">Guest Name</TableHead>
+                              <TableHead className="whitespace-nowrap text-[10px] sm:text-xs px-2 sm:px-4">Room</TableHead>
+                              <TableHead className="whitespace-nowrap text-[10px] sm:text-xs px-2 sm:px-4 text-center">Payment</TableHead>
+                              <TableHead className="whitespace-nowrap text-[10px] sm:text-xs px-2 sm:px-4">
+                                <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('amount')}>
+                                  Amount
+                                  <ArrowUpDown className="h-3 w-3" />
+                                </div>
+                              </TableHead>
+                              <TableHead className="whitespace-nowrap text-[10px] sm:text-xs px-2 sm:px-4 hidden md:table-cell">Collected By</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {filteredCollections.map((collection, index) => (
+                              <TableRow key={collection.id} className="hover:bg-muted/50">
+                                <TableCell className="text-[10px] sm:text-xs text-muted-foreground px-2 sm:px-4">
+                                  {(currentPage * pageSize) + index + 1}
+                                </TableCell>
+                                <TableCell className="whitespace-nowrap px-2 sm:px-4">
+                                  <div className="text-[10px] sm:text-xs font-medium">
+                                    {new Date(collection.collection_date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="whitespace-nowrap px-2 sm:px-4">
+                                  <div className="text-[10px] sm:text-xs font-medium truncate max-w-[120px] sm:max-w-[160px]">
+                                    {collection.guest_name || 'Walk-in'}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="whitespace-nowrap px-2 sm:px-4">
+                                  <div className="text-[10px] sm:text-xs text-muted-foreground">
+                                    {collection.room_number ? `R${collection.room_number}` : '-'}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="whitespace-nowrap px-2 sm:px-4">
+                                  {getPaymentModeBadge(collection.payment_mode)}
+                                </TableCell>
+                                <TableCell className="whitespace-nowrap px-2 sm:px-4 font-bold text-xs sm:text-sm">
+                                  <div className="flex flex-col">
+                                    <div className="flex items-center gap-1">
+                                      <IndianRupee className="h-3 w-3" />
+                                      {collection.amount.toFixed(0)}
+                                    </div>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="whitespace-nowrap px-2 sm:px-4 hidden md:table-cell">
+                                  <div className="text-xs sm:text-sm">{collection.collected_by_name || 'Staff'}</div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+
+                {/* Pagination UI */}
+                {!loading && totalRecords > 0 && (
+                  <div className="px-4 pb-4 sm:px-6 flex flex-col sm:flex-row items-center justify-end gap-4 border-t pt-4">
+                    <div className="flex items-center gap-2 order-1 sm:order-2">
+                      <div className="text-xs font-medium mr-2">
+                        Page {currentPage + 1} of {Math.ceil(totalRecords / pageSize)}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => setCurrentPage(0)}
+                          disabled={currentPage === 0}
+                        >
+                          <ChevronsLeft className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => setCurrentPage(prev => Math.max(0, prev - 1))}
+                          disabled={currentPage === 0}
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => setCurrentPage(prev => prev + 1)}
+                          disabled={(currentPage + 1) * pageSize >= totalRecords}
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => setCurrentPage(Math.ceil(totalRecords / pageSize) - 1)}
+                          disabled={(currentPage + 1) * pageSize >= totalRecords}
+                        >
+                          <ChevronsRight className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </Card>
+            )}
+          </div>
         )}
 
-        {/* Cash Bookings Tab */}
-        {activeTab === 'cash-bookings' && (
-          <Card>
-            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 sm:px-6">
-              <div className="min-w-0">
-                <CardTitle className="text-base sm:text-lg">Cash Bookings</CardTitle>
-                <CardDescription className="text-xs sm:text-sm">
-                  Bookings with cash payment that need collection
-                </CardDescription>
-              </div>
-              <Button onClick={fetchCashBookings} size="sm" variant="outline" disabled={loadingCashBookings} className="h-8 text-xs w-full sm:w-auto">
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh
-              </Button>
-            </CardHeader>
-            <CardContent className="p-0 sm:p-6">
-              {loadingCashBookings ? (
-                <div className="text-center py-8 px-4">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-                  <p className="text-muted-foreground mt-2 text-sm">Loading cash bookings...</p>
-                </div>
-              ) : cashBookings.length === 0 ? (
-                <div className="text-center py-8 px-4 text-muted-foreground">
-                  <CheckCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">All cash bookings have been collected!</p>
-                  <p className="text-xs mt-1">No pending cash bookings found.</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <div className="inline-block min-w-full align-middle">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="whitespace-nowrap text-xs px-2">ID</TableHead>
-                          <TableHead className="whitespace-nowrap text-xs px-2">Guest</TableHead>
-                          <TableHead className="whitespace-nowrap text-xs px-2">Amount</TableHead>
-                          <TableHead className="whitespace-nowrap text-xs px-2">Pending</TableHead>
-                          <TableHead className="whitespace-nowrap text-xs px-2">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {cashBookings.map((booking) => (
-                          <TableRow key={booking.booking_id}>
-                            <TableCell className="whitespace-nowrap px-2 text-xs">
-                              #{booking.booking_id}
-                            </TableCell>
-                            <TableCell className="whitespace-nowrap px-2">
-                              <div className="text-xs font-medium truncate max-w-[100px]">
-                                {booking.guest_name}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                R{booking.room_number}
-                              </div>
-                            </TableCell>
-                            <TableCell className="whitespace-nowrap px-2 text-xs">
-                              ₹{booking.booking_amount.toFixed(0)}
-                            </TableCell>
-                            <TableCell className="whitespace-nowrap px-2">
-                              <div className={`text-xs font-bold ${booking.pending_amount > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                ₹{booking.pending_amount.toFixed(0)}
-                              </div>
-                            </TableCell>
-                            <TableCell className="whitespace-nowrap px-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => autoCollectFromBooking(booking)}
-                                disabled={booking.pending_amount <= 0}
-                                className="h-7 px-2 text-xs"
-                              >
-                                <Wallet className="h-3 w-3 mr-1" />
-                                Collect
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
+
 
         {/* Reports Tab */}
         {activeTab === 'reports' && (
@@ -1213,104 +1251,6 @@ const Collections = () => {
             </Card>
           </div>
         )}
-
-        {/* Handover Modal */}
-        <Dialog open={showHandoverModal} onOpenChange={setShowHandoverModal}>
-          <DialogContent className="sm:max-w-[500px]">
-            <DialogHeader>
-              <DialogTitle>Handover Cash to Owner</DialogTitle>
-              <DialogDescription>
-                Record cash handover for this collection
-              </DialogDescription>
-            </DialogHeader>
-            {selectedCollection && (
-              <div className="space-y-4 py-4">
-                <div className="bg-muted p-4 rounded-lg">
-                  <div className="text-sm text-muted-foreground mb-2">Collection Details</div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <div className="text-xs text-muted-foreground">Guest</div>
-                      <div className="font-medium">{selectedCollection.guest_name || 'Walk-in'}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">Amount</div>
-                      <div className="font-bold text-lg">{formatCurrency(selectedCollection.amount)}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">Date</div>
-                      <div>{new Date(selectedCollection.collection_date).toLocaleDateString()}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">Already Handed Over</div>
-                      <div>{formatCurrency(selectedCollection.handover_amount || 0)}</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <div>
-                    <Label htmlFor="handoverAmount">Amount to Handover *</Label>
-                    <Input
-                      id="handoverAmount"
-                      type="number"
-                      value={handoverAmount}
-                      onChange={(e) => setHandoverAmount(e.target.value)}
-                      max={selectedCollection.amount - (selectedCollection.handover_amount || 0)}
-                      min="0"
-                      step="0.01"
-                      className="mt-1"
-                    />
-                    <div className="text-xs text-muted-foreground mt-1">
-                      Maximum: {formatCurrency(selectedCollection.amount - (selectedCollection.handover_amount || 0))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="handoverTo">Handover To *</Label>
-                    <Select value={handoverTo} onValueChange={setHandoverTo}>
-                      <SelectTrigger className="mt-1">
-                        <SelectValue placeholder="Select recipient" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="owner">Hotel Owner</SelectItem>
-                        <SelectItem value="manager">Hotel Manager</SelectItem>
-                        <SelectItem value="bank">Bank Deposit</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="handoverRemarks">Remarks</Label>
-                    <Textarea
-                      id="handoverRemarks"
-                      value={handoverRemarks}
-                      onChange={(e) => setHandoverRemarks(e.target.value)}
-                      placeholder="Enter any remarks..."
-                      className="mt-1"
-                      rows={3}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setShowHandoverModal(false)}
-                disabled={handoverSubmitting}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={submitHandover}
-                disabled={handoverSubmitting || !handoverAmount || parseFloat(handoverAmount) <= 0}
-              >
-                {handoverSubmitting ? 'Processing...' : 'Confirm Handover'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
 
         {/* New Collection Modal */}
         <Dialog open={showNewCollectionModal} onOpenChange={setShowNewCollectionModal}>
@@ -1437,6 +1377,101 @@ const Collections = () => {
                 disabled={newCollectionSubmitting || !newCollectionData.amount || parseFloat(newCollectionData.amount) <= 0}
               >
                 {newCollectionSubmitting ? 'Processing...' : 'Record Collection'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        {/* Bulk Handover Modal */}
+        <Dialog open={showGeneralHandoverModal} onOpenChange={setShowGeneralHandoverModal}>
+          <DialogContent className="sm:max-w-[450px]">
+            <DialogHeader>
+              <DialogTitle>Process Bulk Handover</DialogTitle>
+              <DialogDescription>
+                Handover the total cash balance to the owner
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="bg-blue-50 border border-blue-100 p-4 rounded-lg flex items-center justify-between">
+                <span className="text-sm font-medium text-blue-800">Pending Amount:</span>
+                <span className="text-lg font-bold text-blue-900">{formatCurrency(summary.pending_handover)}</span>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <Label htmlFor="bulkAmount">Handover Amount *</Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <IndianRupee className="h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="bulkAmount"
+                      type="number"
+                      value={generalHandoverData.amount}
+                      onChange={(e) => setGeneralHandoverData({ ...generalHandoverData, amount: e.target.value })}
+                      className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label htmlFor="bulkTo">Handover To *</Label>
+                    <Select
+                      value={generalHandoverData.handed_to}
+                      onValueChange={(val) => setGeneralHandoverData({ ...generalHandoverData, handed_to: val })}
+                    >
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder="Select recipient" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {staff.length > 0 ? (
+                          staff.map((user) => (
+                            <SelectItem key={user.id} value={user.id.toString()}>
+                              {user.name} ({user.role})
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value="owner">Hotel Owner</SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="bulkType">Settlement Type</Label>
+                    <Select
+                      disabled
+                      value={parseFloat(generalHandoverData.amount) >= summary.pending_handover ? 'full' : 'partial'}
+                      onValueChange={(val) => setGeneralHandoverData({ ...generalHandoverData, handover_type: val })}
+                    >
+                      <SelectTrigger className="mt-1 bg-slate-50 border-slate-200 text-slate-500">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="full">Full Settlement</SelectItem>
+                        <SelectItem value="partial">Partial Payment</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="bulkRemarks">Remarks</Label>
+                  <Textarea
+                    id="bulkRemarks"
+                    value={generalHandoverData.remarks}
+                    onChange={(e) => setGeneralHandoverData({ ...generalHandoverData, remarks: e.target.value })}
+                    placeholder="e.g. Weekly settlement..."
+                    className="mt-1"
+                    rows={2}
+                  />
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowGeneralHandoverModal(false)} disabled={generalHandoverSubmitting}>
+                Cancel
+              </Button>
+              <Button onClick={submitGeneralHandover} disabled={generalHandoverSubmitting || !generalHandoverData.amount}>
+                {generalHandoverSubmitting ? 'Processing...' : 'Submit'}
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -1,6 +1,8 @@
-import BlockRoomForm from '@/components/BlockRoomForm';
-import MaintenanceForm from '@/components/MaintenanceForm';
-import { useState, useEffect } from 'react';
+
+// src/pages/RoomBooking.tsx
+
+import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import Layout from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,6 +11,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useToast } from '@/hooks/use-toast';
+import { Calendar } from '@/components/ui/calendar';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Bed,
   Calendar as CalendarIcon,
@@ -29,12 +40,27 @@ import {
   Clock,
   IndianRupee,
   Wrench,
-  ArrowRight
+  ArrowRight,
+  ChevronLeft,
+  ChevronRight,
+  User,
+  Phone,
+  CreditCard,
+  Wallet,
+  CheckCircle,
+  Loader2,
+  Trash2,
+  CheckSquare,
+  Square
 } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+
+// Import Components
 import BookingForm from '@/components/BookingForm';
-import { Calendar } from '@/components/ui/calendar';
+import BlockRoomForm from '@/components/BlockRoomForm';
+import MaintenanceForm from '@/components/MaintenanceForm';
 import QuotationForm from '@/components/QuotationForm';
+import AddRoomModal from '@/components/AddRoomModal';
+import MultiRoomBookingForm from '@/components/MultiRoomBookingForm';
 
 // URLs
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyzexlVpr_2umhzBdpoW4juzQo4rj2zB1pU3vlz6wqY78YQX3d2BFntfiV7dgLf6PvC/exec';
@@ -71,6 +97,7 @@ interface Booking {
   remainingAmount?: number;
   advanceExpiryDate?: string;
   bookingType?: 'regular' | 'advance' | 'maintenance' | 'blocked';
+  groupBookingId?: string;
   maintenanceDetails?: {
     type?: string;
     description?: string;
@@ -112,10 +139,6 @@ function jsonpFetch<T>(src: string): Promise<T> {
       if (script && script.parentNode) {
         script.parentNode.removeChild(script);
       }
-    };
-
-    script.onload = () => {
-      console.log('✅ JSONP Script loaded successfully');
     };
 
     document.body.appendChild(script);
@@ -185,6 +208,9 @@ async function fetchAdvanceBookings(): Promise<any[]> {
 
 const RoomBooking = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
+
+  // ========== STATE VARIABLES ==========
   const [rooms, setRooms] = useState<Room[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [advanceBookings, setAdvanceBookings] = useState<any[]>([]);
@@ -205,6 +231,7 @@ const RoomBooking = () => {
 
   const [expandedRoom, setExpandedRoom] = useState<string | null>(null);
   const [selectedAdvanceForBooking, setSelectedAdvanceForBooking] = useState<Booking | null>(null);
+  const [showAddRoomModal, setShowAddRoomModal] = useState(false);
 
   // Calendar states
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -216,6 +243,20 @@ const RoomBooking = () => {
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   const [roomViewMode, setRoomViewMode] = useState<'minimal' | 'detailed'>('minimal');
   const [isAvailabilityExpanded, setIsAvailabilityExpanded] = useState<boolean>(false);
+  const [activeRoomType, setActiveRoomType] = useState<string>('all');
+  const [bookingPage, setBookingPage] = useState(1);
+  const recordsPerPage = 10;
+
+  // ========== MULTI-SELECT STATES ==========
+  const [selectedRoomsForMulti, setSelectedRoomsForMulti] = useState<Room[]>([]);
+  const [showMultiBookingForm, setShowMultiBookingForm] = useState(false);
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
+  const [selectAll, setSelectAll] = useState(false);
+
+  // Group bookings view
+  const [showGroupBookings, setShowGroupBookings] = useState(false);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [groupBookings, setGroupBookings] = useState<Booking[]>([]);
 
   const [availabilityData, setAvailabilityData] = useState<{
     availableCount: number;
@@ -249,7 +290,7 @@ const RoomBooking = () => {
     hotelName: currentUser?.hotelName
   });
 
-  // Helper function to format date as YYYY-MM-DD with error handling
+  // ========== HELPER FUNCTIONS ==========
   const formatDate = (date: Date | string): string => {
     try {
       let dateObj: Date;
@@ -320,27 +361,125 @@ const RoomBooking = () => {
     }
   };
 
-  // Helper function to check if room has advance booking for selected date
   const getAdvanceBookingForRoom = (room: Room, date: Date): Booking | null => {
     const roomBookings = bookings.filter(booking => {
-      const isMatch = 
+      const isMatch =
         booking.roomId === room.roomId ||
         booking.roomNumber === room.number.toString() ||
         booking.roomNumber === room.roomId ||
         String(booking.roomNumber) === String(room.number);
-      
+
       if (!isMatch) return false;
-      
       if (!booking.isAdvanceBooking) return false;
-      
       if (booking.status !== 'confirmed' && booking.status !== 'pending') return false;
-      
+
       return isDateBooked(date, booking.checkIn, booking.checkOut, booking);
     });
 
     return roomBookings.length > 0 ? roomBookings[0] : null;
   };
 
+  // ========== MULTI-SELECT FUNCTIONS ==========
+  const toggleRoomSelection = (room: Room) => {
+    setSelectedRoomsForMulti(prev => {
+      const exists = prev.find(r => r.roomId === room.roomId);
+      if (exists) {
+        return prev.filter(r => r.roomId !== room.roomId);
+      } else {
+        return [...prev, room];
+      }
+    });
+  };
+
+  // const toggleSelectAll = () => {
+  //   if (selectAll) {
+  //     setSelectedRoomsForMulti([]);
+  //   } else {
+  //     setSelectedRoomsForMulti(filteredRooms);
+  //   }
+  //   setSelectAll(!selectAll);
+  // };
+
+
+  const toggleSelectAll = () => {
+    if (selectAll) {
+      setSelectedRoomsForMulti([]);
+    } else {
+      // Only select rooms that are available for the selected date
+      const availableRoomsOnly = filteredRooms.filter(room => {
+        const roomBookings = bookings.filter(booking =>
+          booking.roomId === room.roomId ||
+          booking.roomNumber === room.number.toString()
+        );
+
+        const isMaintenance = roomBookings.some(booking =>
+          booking.status === 'maintenance' && isDateBooked(selectedDate, booking.checkIn, booking.checkOut, booking)
+        );
+
+        const isBlocked = !isMaintenance && roomBookings.some(booking =>
+          booking.status === 'blocked' && isDateBooked(selectedDate, booking.checkIn, booking.checkOut, booking)
+        );
+
+        const isAdvanceBooked = !isMaintenance && !isBlocked && roomBookings.some(booking =>
+          booking.isAdvanceBooking &&
+          (booking.status === 'confirmed' || booking.status === 'pending') &&
+          isDateBooked(selectedDate, booking.checkIn, booking.checkOut, booking)
+        );
+
+        const isRegularBooked = !isMaintenance && !isBlocked && !isAdvanceBooked && roomBookings.some(booking =>
+          booking.status === 'booked' && isDateBooked(selectedDate, booking.checkIn, booking.checkOut, booking)
+        );
+
+        return !isMaintenance && !isBlocked && !isAdvanceBooked && !isRegularBooked;
+      });
+
+      setSelectedRoomsForMulti(availableRoomsOnly);
+    }
+    setSelectAll(!selectAll);
+  };
+
+  const clearRoomSelection = () => {
+    setSelectedRoomsForMulti([]);
+    setMultiSelectMode(false);
+    setSelectAll(false);
+  };
+
+  const handleMultiBookingSuccess = () => {
+    setShowMultiBookingForm(false);
+    setSelectedRoomsForMulti([]);
+    setMultiSelectMode(false);
+    setSelectAll(false);
+    fetchRooms();
+    toast({
+      title: "Success",
+      description: `Multiple rooms booked successfully`,
+    });
+  };
+
+  // ========== GROUP BOOKING FUNCTIONS ==========
+  const fetchGroupBookings = async (groupId: string) => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`${NODE_BACKEND_URL}/bookings/group/${groupId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const result = await response.json();
+      if (result.success) {
+        setGroupBookings(result.data);
+        setSelectedGroupId(groupId);
+        setShowGroupBookings(true);
+      }
+    } catch (error) {
+      console.error('Error fetching group bookings:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch group bookings",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // ========== AVAILABILITY CALCULATION ==========
   const calculateAvailability = (date: Date | DateRange) => {
     try {
       console.log('📊 Calculating availability...');
@@ -520,6 +659,7 @@ const RoomBooking = () => {
     }
   };
 
+  // ========== DATA FETCHING ==========
   const testGoogleSheetsConnection = async (spreadsheetId: string): Promise<boolean> => {
     try {
       console.log('🔗 Testing Google Sheets connection...');
@@ -706,7 +846,8 @@ const RoomBooking = () => {
           advanceExpiryDate: normalizedBooking.advance_expiry_date || booking.advanceExpiryDate || null,
           bookingType: bookingType,
           fromDate: normalizedBooking.from_date,
-          toDate: normalizedBooking.to_date
+          toDate: normalizedBooking.to_date,
+          groupBookingId: normalizedBooking.group_booking_id || booking.groupBookingId
         };
       });
 
@@ -719,9 +860,10 @@ const RoomBooking = () => {
         const advanceCount = transformedBookings.filter(b => b.isAdvanceBooking).length;
         const maintenanceCount = transformedBookings.filter(b => b.status === 'maintenance').length;
         const blockedCount = transformedBookings.filter(b => b.status === 'blocked').length;
+        const groupCount = transformedBookings.filter(b => b.groupBookingId).length;
         toast({
           title: "Data Loaded",
-          description: `Loaded ${roomsData.length} rooms, ${transformedBookings.length} bookings (${advanceCount} advance, ${maintenanceCount} maintenance, ${blockedCount} blocked)`,
+          description: `Loaded ${roomsData.length} rooms, ${transformedBookings.length} bookings (${groupCount} group bookings)`,
         });
       } else {
         toast({
@@ -743,6 +885,7 @@ const RoomBooking = () => {
     }
   };
 
+  // ========== EFFECTS ==========
   useEffect(() => {
     const handleBookingStatusChange = (event) => {
       console.log('🔄 Booking status changed, refreshing rooms data...', event.detail);
@@ -767,17 +910,31 @@ const RoomBooking = () => {
     }
   }, [rooms, bookings, selectedDate]);
 
-  const filteredRooms = rooms.filter(room =>
-    String(room.number).toLowerCase().includes(searchTerm.toLowerCase()) ||
-    String(room.type).toLowerCase().includes(searchTerm.toLowerCase()) ||
-    String(room.floor).toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // ========== FILTERING ==========
+  const roomTypes = ['all', ...new Set(rooms.map(room => room.type))];
+
+  const filteredRooms = rooms.filter(room => {
+    const matchesSearch = String(room.number).toLowerCase().includes(searchTerm.toLowerCase()) ||
+      String(room.type).toLowerCase().includes(searchTerm.toLowerCase()) ||
+      String(room.floor).toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesType = activeRoomType === 'all' || room.type === activeRoomType;
+
+    return matchesSearch && matchesType;
+  });
 
   const filteredBookings = bookings.filter(booking =>
     booking.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     booking.roomNumber.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const totalPagesForBookings = Math.ceil(filteredBookings.length / recordsPerPage);
+  const paginatedBookings = filteredBookings.slice(
+    (bookingPage - 1) * recordsPerPage,
+    bookingPage * recordsPerPage
+  );
+
+  // ========== DATE HANDLERS ==========
   const handleDateSelect = (date: Date | undefined) => {
     if (date) {
       setSelectedDate(date);
@@ -792,6 +949,7 @@ const RoomBooking = () => {
     }
   };
 
+  // ========== ACTION HANDLERS ==========
   const handleQuickAction = async (room: Room, mode: 'book' | 'block' | 'maintenance') => {
     const roomWithId = {
       ...room,
@@ -898,6 +1056,10 @@ const RoomBooking = () => {
       Payment Status: ${booking.paymentStatus}
     `;
 
+    if (booking.groupBookingId) {
+      receiptContent += `\n      Group Booking ID: ${booking.groupBookingId}`;
+    }
+
     if (booking.isAdvanceBooking) {
       receiptContent += `\n      Advance Paid: ₹${booking.advanceAmount}\n      Remaining: ₹${booking.remainingAmount}`;
     }
@@ -929,6 +1091,145 @@ const RoomBooking = () => {
     });
   };
 
+  const handleConvertAndBook = (room: Room, advanceBooking: any) => {
+    console.log('🔄 Converting advance booking from room view:', advanceBooking);
+    console.log('🔄 Room object:', room);
+
+    toast({
+      title: "Loading",
+      description: "Fetching advance booking details...",
+    });
+
+    const fetchFullAdvanceBooking = async () => {
+      try {
+        const token = localStorage.getItem('authToken');
+        let bookingId = advanceBooking.id;
+        if (typeof bookingId === 'string' && bookingId.startsWith('adv-')) {
+          bookingId = bookingId.replace('adv-', '');
+        }
+
+        console.log('🔍 Fetching advance booking details for ID:', bookingId);
+
+        const response = await fetch(`${NODE_BACKEND_URL}/advance-bookings/${bookingId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const result = await response.json();
+        console.log('✅ Full advance booking details fetched:', result.data);
+
+        if (result.success && result.data) {
+          console.log('📦 Setting selectedAdvanceForBooking with:', result.data);
+          setSelectedAdvanceForBooking(result.data);
+          setSelectedRoom(room);
+          setDateRange({
+            from: new Date(result.data.from_date || result.data.checkIn || advanceBooking.checkIn),
+            to: new Date(result.data.to_date || result.data.checkOut || advanceBooking.checkOut)
+          });
+
+          setTimeout(() => {
+            console.log('📦 Opening booking form with data:', result.data);
+            setShowBookingForm(true);
+          }, 100);
+
+          toast({
+            title: "✅ Advance Booking Loaded",
+            description: `Details loaded for ${result.data.customer_name || result.data.customerName}`,
+          });
+        } else {
+          throw new Error(result.message || 'Failed to fetch advance booking details');
+        }
+      } catch (error) {
+        console.error('❌ Error fetching advance booking:', error);
+        toast({
+          title: "Error",
+          description: "Failed to fetch advance booking details. Using local data.",
+          variant: "destructive"
+        });
+
+        setSelectedAdvanceForBooking(advanceBooking);
+        setSelectedRoom(room);
+        setDateRange({
+          from: new Date(advanceBooking.checkIn || advanceBooking.from_date),
+          to: new Date(advanceBooking.checkOut || advanceBooking.to_date)
+        });
+
+        setTimeout(() => {
+          setShowBookingForm(true);
+        }, 100);
+      }
+    };
+
+    fetchFullAdvanceBooking();
+  };
+
+  const handleUnblockRoom = async (room: Room, blockBooking: Booking) => {
+    if (!blockBooking) {
+      toast({
+        title: "Error",
+        description: "No block record found for this room on selected date",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      if (userSource === 'database') {
+        const token = localStorage.getItem('authToken');
+
+        const response = await fetch(`${NODE_BACKEND_URL}/bookings/${blockBooking.id}/unblock`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          }
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        if (result.success) {
+          toast({
+            title: "✅ Room Unblocked",
+            description: `Room ${room.number} has been unblocked successfully`,
+          });
+
+          await fetchRooms();
+
+          window.dispatchEvent(new CustomEvent('booking-status-changed', {
+            detail: { roomId: room.roomId, action: 'unblocked' }
+          }));
+        } else {
+          throw new Error(result.message || 'Failed to unblock room');
+        }
+      } else {
+        toast({
+          title: "Coming Soon",
+          description: "Unblock functionality for Google Sheets will be available soon",
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error unblocking room:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to unblock room",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ========== STATUS BADGE HELPERS ==========
   const getStatusBadge = (status: string, bookingType?: string) => {
     const statusConfig: Record<string, { label: string; class: string }> = {
       available: { label: 'Available', class: 'bg-green-100 text-green-800 border-green-200' },
@@ -1019,47 +1320,95 @@ const RoomBooking = () => {
     }
   };
 
+  // ========== RENDER ==========
   return (
     <Layout>
       <div className="space-y-6">
-        {/* Header */}
+        {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-2xl md:text-3xl font-bold">Room Booking System</h1>
+              {multiSelectMode && (
+                <Badge className="bg-blue-500 text-white animate-pulse">
+                  Multi-Select Mode: {selectedRoomsForMulti.length} rooms selected
+                </Badge>
+              )}
+              {selectedRoomsForMulti.length > 0 && (
+                <Badge className="bg-green-600 text-white">
+                  Total: ₹{selectedRoomsForMulti.reduce((sum, room) => sum + room.price, 0).toFixed(2)}/night
+                </Badge>
+              )}
             </div>
             <p className="text-muted-foreground mt-1 text-sm">
               {loading ? 'Loading data...' :
-                `${rooms.length} rooms • ${bookings.length} bookings • ${bookings.filter(b => b.isAdvanceBooking).length} advance • ${bookings.filter(b => b.status === 'maintenance').length} maintenance • ${bookings.filter(b => b.status === 'blocked').length} blocked`}
+                `${rooms.length} rooms • ${bookings.length} bookings • ${bookings.filter(b => b.groupBookingId).length} group bookings • ${bookings.filter(b => b.isAdvanceBooking).length} advance • ${bookings.filter(b => b.status === 'maintenance').length} maintenance • ${bookings.filter(b => b.status === 'blocked').length} blocked`}
             </p>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            {/* Multi-Select Toggle Button */}
             <Button
-              onClick={() => {
-                console.log('🔍 DEBUG INFO:');
-                console.log('Total bookings:', bookings.length);
-                console.log('By status:', {
-                  booked: bookings.filter(b => b.status === 'booked').length,
-                  maintenance: bookings.filter(b => b.status === 'maintenance').length,
-                  blocked: bookings.filter(b => b.status === 'blocked').length,
-                  advance: bookings.filter(b => b.isAdvanceBooking).length
-                });
-                console.log('Selected date:', selectedDate.toLocaleDateString());
-                console.log('Selected date formatted:', formatDate(selectedDate));
-
-                bookings.forEach(b => {
-                  const isForDate = isDateBooked(selectedDate, b.checkIn, b.checkOut, b);
-                  if (isForDate) {
-                    console.log(`✅ Booking ${b.id} (${b.status}) affects ${selectedDate.toLocaleDateString()}`);
-                  }
-                });
-              }}
-              variant="outline"
+              onClick={() => setMultiSelectMode(!multiSelectMode)}
+              variant={multiSelectMode ? "default" : "outline"}
               size="sm"
+              className={multiSelectMode ? "bg-blue-600 hover:bg-blue-700" : ""}
             >
-              Debug
+              {multiSelectMode ? (
+                <CheckSquare className="h-4 w-4 mr-2" />
+              ) : (
+                <Square className="h-4 w-4 mr-2" />
+              )}
+              {multiSelectMode ? "Exit Multi-Select" : "Multi-Select"}
             </Button>
+
+            {/* Select All Button (only in multi-select mode) */}
+            {multiSelectMode && filteredRooms.length > 0 && (
+              <Button
+                onClick={toggleSelectAll}
+                variant="outline"
+                size="sm"
+              >
+                {selectAll ? (
+                  <>
+                    <Square className="h-4 w-4 mr-2" />
+                    Deselect All
+                  </>
+                ) : (
+                  <>
+                    <CheckSquare className="h-4 w-4 mr-2" />
+                    Select All ({filteredRooms.length})
+                  </>
+                )}
+              </Button>
+            )}
+
+            {/* Multi-Book Button (only when rooms are selected) */}
+            {selectedRoomsForMulti.length > 0 && (
+              <Button
+                onClick={() => setShowMultiBookingForm(true)}
+                size="sm"
+                className="bg-green-600 hover:bg-green-700"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Book {selectedRoomsForMulti.length} Rooms
+              </Button>
+            )}
+
+            {/* Clear Selection Button */}
+            {selectedRoomsForMulti.length > 0 && (
+              <Button
+                onClick={clearRoomSelection}
+                variant="outline"
+                size="sm"
+                className="text-red-600 border-red-200 hover:bg-red-50"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Clear ({selectedRoomsForMulti.length})
+              </Button>
+            )}
+
+            {/* Refresh Button */}
             <Button onClick={fetchRooms} variant="outline" size="sm" disabled={loading}>
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
               {loading ? 'Loading...' : 'Refresh'}
@@ -1077,17 +1426,18 @@ const RoomBooking = () => {
                   <h3 className="font-semibold text-yellow-800">No Rooms Found</h3>
                   <p className="text-sm text-yellow-700 mt-1">
                     {userSource === 'google_sheets'
-                      ? 'Your Google Sheets spreadsheet has no rooms defined or there was an error loading them. Please check your spreadsheet and ensure it has a "Rooms" sheet with room data.'
-                      : 'No rooms available in the database. Please contact your administrator to add rooms.'}
+                      ? 'Your Google Sheets spreadsheet has no rooms defined. Please add rooms to continue.'
+                      : 'No rooms available in the database. Please add rooms to continue.'}
                   </p>
                   <div className="mt-2 flex gap-2">
                     <Button
                       size="sm"
                       variant="outline"
                       className="border-yellow-300 text-yellow-700 hover:bg-yellow-100"
-                      onClick={() => window.open('https://docs.google.com/spreadsheets', '_blank')}
+                      onClick={() => setShowAddRoomModal(true)}
                     >
-                      Open Google Sheets
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Rooms
                     </Button>
                     <Button
                       size="sm"
@@ -1095,6 +1445,7 @@ const RoomBooking = () => {
                       className="border-yellow-300 text-yellow-700 hover:bg-yellow-100"
                       onClick={fetchRooms}
                     >
+                      <RefreshCw className="h-4 w-4 mr-2" />
                       Retry Loading
                     </Button>
                   </div>
@@ -1104,7 +1455,7 @@ const RoomBooking = () => {
           </Card>
         )}
 
-        {/* Availability Summary Card - Collapsible */}
+        {/* Availability Summary Card */}
         {rooms.length > 0 && (
           <Card>
             <CardHeader
@@ -1112,12 +1463,22 @@ const RoomBooking = () => {
               onClick={() => setIsAvailabilityExpanded(!isAvailabilityExpanded)}
             >
               <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2">
-                  <CalendarDays className="h-5 w-5 text-primary" />
-                  Room Availability
-                </CardTitle>
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                  {isAvailabilityExpanded ? '▼' : '▶'}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                  <CardTitle className="flex items-center gap-2">
+                    <CalendarDays className="h-5 w-5 text-primary" />
+                    Room Availability
+                  </CardTitle>
+                  <Badge variant="outline" className="bg-blue-50 text-blue-700 font-medium px-2 py-1 h-auto shrink-0 text-xs">
+                    {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                  </Badge>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-2 border-primary/20 hover:bg-primary/5 hover:text-primary transition-all shrink-0"
+                >
+                  <Eye className="h-4 w-4" />
+                  <span>{isAvailabilityExpanded ? 'Hide' : 'View'}</span>
                 </Button>
               </div>
             </CardHeader>
@@ -1128,10 +1489,7 @@ const RoomBooking = () => {
                   {/* Calendar Section */}
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                      <h3 className="font-medium">Select Date</h3>
-                      <Badge variant="outline" className="bg-blue-50">
-                        {selectedDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                      </Badge>
+                      <h3 className="font-medium">Calendar Select</h3>
                     </div>
 
                     <Calendar
@@ -1155,6 +1513,7 @@ const RoomBooking = () => {
                         advanceBooked: (date) => {
                           return bookings.some(booking => {
                             if (!booking.isAdvanceBooking) return false;
+                            if (booking.status === 'blocked' || booking.status === 'maintenance') return false;
                             const isBookedStatus = booking.status &&
                               (booking.status === 'confirmed' || booking.status === 'pending');
                             if (!isBookedStatus) return false;
@@ -1185,20 +1544,8 @@ const RoomBooking = () => {
                     {/* Legend */}
                     <div className="flex flex-wrap items-center gap-4 text-sm">
                       <div className="flex items-center gap-1">
-                        <div className="w-3 h-3 bg-green-100 rounded"></div>
-                        <span>High Availability (&gt;70%)</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <div className="w-3 h-3 bg-yellow-100 rounded"></div>
-                        <span>Medium (40-70%)</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <div className="w-3 h-3 bg-red-100 rounded"></div>
-                        <span>Low (&lt;40%)</span>
-                      </div>
-                      <div className="flex items-center gap-1">
                         <div className="w-3 h-3 bg-purple-100 rounded"></div>
-                        <span>Advance Booked</span>
+                        <span>Advance</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <div className="w-3 h-3 bg-yellow-100 rounded border border-yellow-300"></div>
@@ -1249,7 +1596,7 @@ const RoomBooking = () => {
                         <CardContent className="p-4">
                           <div className="flex items-center justify-between">
                             <div>
-                              <p className="text-sm text-purple-700">Advance Booked</p>
+                              <p className="text-sm text-purple-700">Advance</p>
                               <p className="text-2xl font-bold text-purple-900">
                                 {availabilityData.advanceBookedCount > 0 ? availabilityData.advanceBookedCount : 0}
                               </p>
@@ -1332,7 +1679,7 @@ const RoomBooking = () => {
                         </CardContent>
                       </Card>
 
-                      <Card className="bg-blue-50 border-blue-200">
+                      <Card className="bg-blue-50 border-blue-200 col-span-2">
                         <CardContent className="p-4">
                           <div className="flex items-center justify-between">
                             <div>
@@ -1361,15 +1708,6 @@ const RoomBooking = () => {
                         </CardContent>
                       </Card>
                     </div>
-
-                    <Button
-                      onClick={() => setViewMode(viewMode === 'grid' ? 'calendar' : 'grid')}
-                      variant="outline"
-                      className="w-full"
-                    >
-                      <CalendarDays className="h-4 w-4 mr-2" />
-                      {viewMode === 'grid' ? 'Switch to Calendar View' : 'Switch to Grid View'}
-                    </Button>
                   </div>
                 </div>
               </CardContent>
@@ -1394,42 +1732,6 @@ const RoomBooking = () => {
               >
                 <Bed className="h-4 w-4" />
                 <span>Rooms ({rooms.length})</span>
-
-                {/* View toggle buttons */}
-                <div className="flex gap-1 ml-2 bg-gray-100 p-0.5 rounded-lg">
-                  <Button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setRoomViewMode('minimal');
-                    }}
-                    size="sm"
-                    className={`
-                      text-[10px] sm:text-xs h-6 px-2 rounded-md transition-all font-medium
-                      ${roomViewMode === 'minimal'
-                        ? 'bg-primary text-white shadow-sm'
-                        : 'bg-transparent text-gray-600 hover:bg-gray-200'
-                      }
-                    `}
-                  >
-                    Mini
-                  </Button>
-                  <Button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setRoomViewMode('detailed');
-                    }}
-                    size="sm"
-                    className={`
-                      text-[10px] sm:text-xs h-6 px-2 rounded-md transition-all font-medium
-                      ${roomViewMode === 'detailed'
-                        ? 'bg-primary text-white shadow-sm'
-                        : 'bg-transparent text-gray-600 hover:bg-gray-200'
-                      }
-                    `}
-                  >
-                    Detail
-                  </Button>
-                </div>
               </TabsTrigger>
 
               <TabsTrigger
@@ -1453,18 +1755,178 @@ const RoomBooking = () => {
           <TabsContent value="rooms" className="space-y-6">
             {rooms.length > 0 ? (
               <>
-                {/* Search */}
+                {/* Search and Filters */}
                 <Card>
                   <CardContent className="p-4">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                      <Input
-                        placeholder="Search rooms by number, type, or floor..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-10"
-                      />
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      {/* Search Input */}
+                      <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                        <Input
+                          placeholder="Search rooms by number, type, or floor..."
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          className="pl-10"
+                        />
+                      </div>
+
+                      {/* Room Type Filter Dropdown */}
+                      <div className="w-full sm:w-48">
+                        <Select value={activeRoomType} onValueChange={setActiveRoomType}>
+                          <SelectTrigger className="h-10">
+                            <SelectValue placeholder="Filter by Room Type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {roomTypes.map((type) => (
+                              <SelectItem key={type} value={type}>
+                                {type === 'all' ? 'All Room Types' : type}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* View Toggles Container */}
+                      <div className="flex flex-row items-center gap-2">
+                        {/* Grid/Calendar View Toggle */}
+                        <div className="flex gap-1 bg-gray-100 p-0.5 rounded-lg flex-1 sm:flex-none">
+                          <Button
+                            onClick={() => setViewMode('grid')}
+                            size="sm"
+                            className={`
+                              flex-1 sm:w-auto text-xs h-8 px-3 rounded-md transition-all font-medium
+                              ${viewMode === 'grid'
+                                ? 'bg-primary text-white shadow-sm'
+                                : 'bg-transparent text-gray-600 hover:bg-gray-200'
+                              }
+                            `}
+                          >
+                            <Bed className="h-3 w-3 mr-1" />
+                            Grid
+                          </Button>
+                          <Button
+                            onClick={() => setViewMode('calendar')}
+                            size="sm"
+                            className={`
+                              flex-1 sm:w-auto text-xs h-8 px-3 rounded-md transition-all font-medium
+                              ${viewMode === 'calendar'
+                                ? 'bg-primary text-white shadow-sm'
+                                : 'bg-transparent text-gray-600 hover:bg-gray-200'
+                              }
+                            `}
+                          >
+                            <CalendarDays className="h-3 w-3 mr-1" />
+                            Calendar
+                          </Button>
+                        </div>
+
+                        {/* Mini/Detail View Toggle (only shows when in grid mode) */}
+                        {viewMode === 'grid' && (
+                          <div className="flex gap-1 bg-gray-100 p-0.5 rounded-lg flex-1 sm:flex-none">
+                            <Button
+                              onClick={() => setRoomViewMode('minimal')}
+                              size="sm"
+                              className={`
+                                flex-1 sm:w-auto text-xs h-8 px-3 rounded-md transition-all font-medium
+                                ${roomViewMode === 'minimal'
+                                  ? 'bg-primary text-white shadow-sm'
+                                  : 'bg-transparent text-gray-600 hover:bg-gray-200'
+                                }
+                              `}
+                            >
+                              Mini
+                            </Button>
+                            <Button
+                              onClick={() => setRoomViewMode('detailed')}
+                              size="sm"
+                              className={`
+                                flex-1 sm:w-auto text-xs h-8 px-3 rounded-md transition-all font-medium
+                                ${roomViewMode === 'detailed'
+                                  ? 'bg-primary text-white shadow-sm'
+                                  : 'bg-transparent text-gray-600 hover:bg-gray-200'
+                                }
+                              `}
+                            >
+                              Detail
+                            </Button>
+                          </div>
+                        )}
+                      </div>
                     </div>
+
+                    {/* Multi-Select Info Bar */}
+                    {/* {multiSelectMode && (
+                      <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <CheckSquare className="h-4 w-4 text-blue-600" />
+                          <span className="text-sm text-blue-700">
+                            <strong>{selectedRoomsForMulti.length}</strong> rooms selected
+                            {selectedRoomsForMulti.length > 0 && (
+                              <> • Total: <strong>₹{selectedRoomsForMulti.reduce((sum, r) => sum + r.price, 0).toFixed(2)}</strong>/night</>
+                            )}
+                          </span>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={toggleSelectAll}
+                            className="h-7 text-xs border-blue-300"
+                          >
+                            {selectAll ? 'Deselect All' : 'Select All'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={clearRoomSelection}
+                            className="h-7 text-xs border-blue-300"
+                          >
+                            Clear
+                          </Button>
+                        </div>
+                      </div>
+                    )} */}
+                    {multiSelectMode && (
+                      <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <CheckSquare className="h-4 w-4 text-blue-600" />
+                          <span className="text-sm text-blue-700">
+                            <strong>{selectedRoomsForMulti.length}</strong> rooms selected
+                            {selectedRoomsForMulti.length > 0 && (
+                              <> • Total: <strong>₹{selectedRoomsForMulti.reduce((sum, r) => sum + r.price, 0).toFixed(2)}</strong>/night</>
+                            )}
+                          </span>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={toggleSelectAll}
+                            className="h-7 text-xs border-blue-300"
+                          >
+                            {selectAll ? 'Deselect All' : `Select Available (${filteredRooms.filter(r => {
+                              // Calculate available count here
+                              const roomBookings = bookings.filter(b =>
+                                b.roomId === r.roomId || b.roomNumber === r.number.toString()
+                              );
+                              const isMaintenance = roomBookings.some(b => b.status === 'maintenance' && isDateBooked(selectedDate, b.checkIn, b.checkOut));
+                              const isBlocked = !isMaintenance && roomBookings.some(b => b.status === 'blocked' && isDateBooked(selectedDate, b.checkIn, b.checkOut));
+                              const isAdvanceBooked = !isMaintenance && !isBlocked && roomBookings.some(b => b.isAdvanceBooking && (b.status === 'confirmed' || b.status === 'pending') && isDateBooked(selectedDate, b.checkIn, b.checkOut));
+                              const isRegularBooked = !isMaintenance && !isBlocked && !isAdvanceBooked && roomBookings.some(b => b.status === 'booked' && isDateBooked(selectedDate, b.checkIn, b.checkOut));
+                              return !isMaintenance && !isBlocked && !isAdvanceBooked && !isRegularBooked;
+                            }).length})`}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={clearRoomSelection}
+                            className="h-7 text-xs border-blue-300"
+                          >
+                            Clear
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -1559,6 +2021,7 @@ const RoomBooking = () => {
                             }
 
                             const isExpanded = expandedRoom === room.roomId;
+                            const isSelected = selectedRoomsForMulti.some(r => r.roomId === room.roomId);
 
                             return (
                               <motion.div
@@ -1566,24 +2029,57 @@ const RoomBooking = () => {
                                 initial={{ opacity: 0, scale: 0.9 }}
                                 animate={{ opacity: 1, scale: 1 }}
                                 transition={{ duration: 0.2 }}
-                                className={isExpanded ? 'col-span-2 row-span-2 z-10' : ''}
+                                className={`relative ${multiSelectMode ? 'cursor-pointer' : ''} ${isExpanded ? 'col-span-2 row-span-2 z-10' : ''}`}
+                                onClick={() => {
+                                  if (multiSelectMode && isAvailableForSelectedDate) {
+                                    toggleRoomSelection(room);
+                                  }
+                                }}
                               >
+                                {/* Selection Checkbox - only shown in multi-select mode */}
+                                {multiSelectMode && (
+                                  <div className="absolute top-1 left-1 z-20">
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={() => toggleRoomSelection(room)}
+                                      onClick={(e) => e.stopPropagation()}
+                                      disabled={!isAvailableForSelectedDate}
+                                      className={`
+                  h-5 w-5 rounded border-gray-300 focus:ring-blue-500
+                  ${!isAvailableForSelectedDate
+                                          ? 'cursor-not-allowed opacity-50 bg-gray-200'
+                                          : 'text-blue-600 cursor-pointer'
+                                        }
+                `}
+                                    />
+                                  </div>
+                                )}
+
+                                {/* Selected Count Badge */}
+                                {isSelected && multiSelectMode && (
+                                  <div className="absolute top-1 right-1 z-20 bg-blue-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold">
+                                    {selectedRoomsForMulti.findIndex(r => r.roomId === room.roomId) + 1}
+                                  </div>
+                                )}
+
                                 <Card
                                   className={`
                                     cursor-pointer transition-all duration-200 hover:shadow-lg
                                     border ${isExpanded ? borderColor : 'border-transparent'}
                                     ${isExpanded ? 'shadow-xl' : 'hover:shadow-md'}
-                                    h-full
+                                    h-full flex flex-col min-h-[58px] sm:min-h-[64px]
                                     ${!isExpanded ? 'bg-opacity-30' : 'bg-white'}
+                                    ${isSelected && multiSelectMode ? 'ring-2 ring-blue-500 ring-offset-2' : ''}
                                   `}
                                   onClick={() => setExpandedRoom(isExpanded ? null : room.roomId)}
                                   style={!isExpanded ? {
                                     backgroundColor:
                                       isMaintenance ? '#fef9c3' :
-                                      isBlocked ? '#f3f4f6' :
-                                      isAdvanceBooked ? '#f3e8ff' :
-                                      isRegularBooked ? '#fee2e2' :
-                                      '#dcfce7'
+                                        isBlocked ? '#f3f4f6' :
+                                          isAdvanceBooked ? '#f3e8ff' :
+                                            isRegularBooked ? '#fee2e2' :
+                                              '#dcfce7'
                                   } : {}}
                                 >
                                   {/* Colored bar when expanded */}
@@ -1598,17 +2094,17 @@ const RoomBooking = () => {
                                         <Bed className={`h-2.5 w-2.5 sm:h-3 sm:w-3 flex-shrink-0 ${!isExpanded
                                           ? (isMaintenance ? 'text-yellow-700' :
                                             isBlocked ? 'text-gray-700' :
-                                            isAdvanceBooked ? 'text-purple-700' :
-                                            isRegularBooked ? 'text-red-700' :
-                                            'text-green-700')
+                                              isAdvanceBooked ? 'text-purple-700' :
+                                                isRegularBooked ? 'text-red-700' :
+                                                  'text-green-700')
                                           : iconColor
                                           }`} />
                                         <span className={`font-bold text-xs sm:text-sm truncate ${!isExpanded
                                           ? (isMaintenance ? 'text-yellow-800' :
                                             isBlocked ? 'text-gray-800' :
-                                            isAdvanceBooked ? 'text-purple-800' :
-                                            isRegularBooked ? 'text-red-800' :
-                                            'text-green-800')
+                                              isAdvanceBooked ? 'text-purple-800' :
+                                                isRegularBooked ? 'text-red-800' :
+                                                  'text-green-800')
                                           : ''
                                           }`}>
                                           {room.number}
@@ -1619,19 +2115,18 @@ const RoomBooking = () => {
                                         {/* Status Badge */}
                                         {!isExpanded && (
                                           <div
-                                            className={`px-1 py-0.5 rounded text-[8px] font-medium ${
-                                              isMaintenance ? 'bg-yellow-200 text-yellow-800' :
+                                            className={`px-1 py-0.5 rounded text-[8px] font-medium ${isMaintenance ? 'bg-yellow-200 text-yellow-800' :
                                               isBlocked ? 'bg-gray-300 text-gray-800' :
-                                              isAdvanceBooked ? 'bg-purple-200 text-purple-800' :
-                                              isRegularBooked ? 'bg-red-200 text-red-800' :
-                                              'bg-green-200 text-green-800'
-                                            }`}
+                                                isAdvanceBooked ? 'bg-purple-200 text-purple-800' :
+                                                  isRegularBooked ? 'bg-red-200 text-red-800' :
+                                                    'bg-green-200 text-green-800'
+                                              }`}
                                           >
                                             {isMaintenance ? 'M' :
-                                             isBlocked ? 'B' :
-                                             isAdvanceBooked ? 'A' :
-                                             isRegularBooked ? 'R' :
-                                             'Av'}
+                                              isBlocked ? 'B' :
+                                                isAdvanceBooked ? 'A' :
+                                                  isRegularBooked ? 'R' :
+                                                    'Av'}
                                           </div>
                                         )}
 
@@ -1642,23 +2137,24 @@ const RoomBooking = () => {
                                       </div>
                                     </div>
 
-                                    {/* Room Type */}
+                                    {/* Room Type & Advance Amount */}
                                     {!isExpanded && (
-                                      <div className={`mt-0.5 text-[8px] sm:text-[10px] truncate ${
-                                        isMaintenance ? 'text-yellow-700' :
+                                      <div className={`mt-1 flex flex-col gap-0.5 ${isMaintenance ? 'text-yellow-700' :
                                         isBlocked ? 'text-gray-700' :
-                                        isAdvanceBooked ? 'text-purple-700' :
-                                        isRegularBooked ? 'text-red-700' :
-                                        'text-green-700'
-                                      }`}>
-                                        {room.type}
-                                      </div>
-                                    )}
-
-                                    {/* Advance Booking Badge in Minimal View */}
-                                    {!isExpanded && advanceBooking && (
-                                      <div className="mt-0.5 text-[7px] bg-purple-100 text-purple-800 px-1 py-0.5 rounded-full inline-block">
-                                        Advance: ₹{advanceBooking.advanceAmount}
+                                          isAdvanceBooked ? 'text-purple-700' :
+                                            isRegularBooked ? 'text-red-700' :
+                                              'text-green-700'
+                                        }`}>
+                                        <div className="text-[9px] sm:text-[11px] font-medium truncate leading-tight">
+                                          {room.type}
+                                        </div>
+                                        {advanceBooking ? (
+                                          <div className="text-[8px] sm:text-[10px] font-bold text-purple-700 truncate leading-tight">
+                                            ₹{advanceBooking.advanceAmount}
+                                          </div>
+                                        ) : (
+                                          <div className="text-[8px] sm:text-[10px] invisible leading-tight">0</div>
+                                        )}
                                       </div>
                                     )}
 
@@ -1717,9 +2213,9 @@ const RoomBooking = () => {
                                             <span className="font-bold">
                                               {!isAvailableForSelectedDate
                                                 ? (isMaintenance ? '🔧' :
-                                                   isBlocked ? '🚫' :
-                                                   isAdvanceBooked ? '🔮' :
-                                                   '❌')
+                                                  isBlocked ? '🚫' :
+                                                    isAdvanceBooked ? '🔮' :
+                                                      '❌')
                                                 : '✅'}
                                             </span>
                                           </div>
@@ -1732,18 +2228,25 @@ const RoomBooking = () => {
                                               size="sm"
                                               onClick={(e) => {
                                                 e.stopPropagation();
-                                                setSelectedRoom(room);
-                                                setSelectedAdvanceForBooking(advanceBooking);
-                                                setDateRange({
-                                                  from: new Date(advanceBooking.checkIn),
-                                                  to: new Date(advanceBooking.checkOut)
-                                                });
-                                                setShowBookingForm(true);
+                                                handleConvertAndBook(room, advanceBooking);
                                               }}
                                               className="w-full text-[8px] sm:text-[10px] h-5 sm:h-6 bg-purple-600 hover:bg-purple-700"
                                             >
-                                              <ArrowRight className="h-2 w-2 mr-0.5" />
                                               Convert (₹{advanceBooking.advanceAmount})
+                                            </Button>
+                                          ) : isBlocked ? (
+                                            <Button
+                                              size="sm"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleUnblockRoom(room, roomBookings.find(b =>
+                                                  isDateBooked(selectedDate, b.checkIn, b.checkOut, b) && b.status === 'blocked'
+                                                ));
+                                              }}
+                                              className="w-full text-[8px] sm:text-[10px] h-5 sm:h-6 bg-green-600 hover:bg-green-700"
+                                            >
+                                              <RefreshCw className="h-2 w-2 mr-0.5" />
+                                              Unblock
                                             </Button>
                                           ) : (
                                             <Button
@@ -1753,11 +2256,10 @@ const RoomBooking = () => {
                                                 handleQuickAction(room, 'book');
                                               }}
                                               disabled={!isAvailableForSelectedDate}
-                                              className={`w-full text-[8px] sm:text-[10px] h-5 sm:h-6 ${
-                                                isAvailableForSelectedDate
-                                                  ? 'bg-green-600 hover:bg-green-700'
-                                                  : 'bg-gray-300 cursor-not-allowed'
-                                              }`}
+                                              className={`w-full text-[8px] sm:text-[10px] h-5 sm:h-6 ${isAvailableForSelectedDate
+                                                ? 'bg-green-600 hover:bg-green-700'
+                                                : 'bg-gray-300 cursor-not-allowed'
+                                                }`}
                                             >
                                               <FileImage className="h-2 w-2 mr-0.5" />
                                               {isAvailableForSelectedDate ? 'Book' : 'NA'}
@@ -1772,7 +2274,7 @@ const RoomBooking = () => {
                                                 e.stopPropagation();
                                                 handleQuickAction(room, 'block');
                                               }}
-                                              disabled={!isAvailableForSelectedDate && !advanceBooking}
+                                              disabled={(!isAvailableForSelectedDate && !isBlocked) && !advanceBooking}
                                               className="flex-1 text-[8px] sm:text-[10px] h-5 sm:h-6 px-0.5"
                                             >
                                               Blk
@@ -1784,7 +2286,7 @@ const RoomBooking = () => {
                                                 e.stopPropagation();
                                                 handleQuickAction(room, 'maintenance');
                                               }}
-                                              disabled={!isAvailableForSelectedDate && !advanceBooking}
+                                              disabled={!isAvailableForSelectedDate && !advanceBooking && !isBlocked}
                                               className="flex-1 text-[8px] sm:text-[10px] h-5 sm:h-6 px-0.5"
                                             >
                                               Mnt
@@ -1880,30 +2382,55 @@ const RoomBooking = () => {
                               }
                             }
 
+                            const isSelected = selectedRoomsForMulti.some(r => r.roomId === room.roomId);
+
                             return (
                               <motion.div
                                 key={`${room.source}-${room.roomId}`}
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ duration: 0.3 }}
+                                className={`relative ${multiSelectMode ? 'cursor-pointer' : ''}`}
+                                onClick={() => {
+                                  if (multiSelectMode && isAvailableForSelectedDate) {
+                                    toggleRoomSelection(room);
+                                  }
+                                }}
                               >
-                                <Card className={`hover:shadow-lg transition-shadow h-full ${statusColor}`}>
+                                {/* Selection Checkbox */}
+                                {multiSelectMode && (
+                                  <div className="absolute top-2 left-2 z-20">
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={() => toggleRoomSelection(room)}
+                                      onClick={(e) => e.stopPropagation()}
+                                      disabled={!isAvailableForSelectedDate} // 👈 DISABLE for unavailable rooms
+                                      className={`
+                  h-5 w-5 rounded border-gray-300 focus:ring-blue-500
+                  ${!isAvailableForSelectedDate
+                                          ? 'cursor-not-allowed opacity-50 bg-gray-200'
+                                          : 'text-blue-600 cursor-pointer'
+                                        }
+                `}
+                                    />
+                                  </div>
+                                )}
+
+                                {/* Selected Badge */}
+                                {isSelected && multiSelectMode && isAvailableForSelectedDate && (
+                                  <div className="absolute top-2 right-2 z-20 bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">
+                                    {selectedRoomsForMulti.findIndex(r => r.roomId === room.roomId) + 1}
+                                  </div>
+                                )}
+
+                                <Card className={`hover:shadow-lg transition-shadow h-full ${statusColor} ${isSelected && multiSelectMode ? 'ring-2 ring-blue-500 ring-offset-2' : ''}`}>
                                   <CardHeader className="pb-3">
                                     <div className="flex items-start justify-between">
                                       <div>
                                         <CardTitle className="text-lg flex items-center gap-2">
                                           <Bed className={`h-5 w-5 ${iconColor}`} />
                                           {room.number}
-                                          {!isAvailableForSelectedDate && (
-                                            <span className={`text-xs px-2 py-1 rounded-full ${statusBg}`}>
-                                              {statusLabel}
-                                            </span>
-                                          )}
-                                          {isAvailableForSelectedDate && (
-                                            <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
-                                              AVAILABLE
-                                            </span>
-                                          )}
                                         </CardTitle>
                                         <p className="text-sm text-muted-foreground mt-1">{room.type} • {room.size}</p>
                                       </div>
@@ -1935,17 +2462,16 @@ const RoomBooking = () => {
                                     </div>
 
                                     {/* Date Availability Status */}
-                                    <div className={`text-xs p-2 rounded ${
-                                      !isAvailableForSelectedDate
-                                        ? isMaintenance
-                                          ? 'bg-yellow-50 text-yellow-800'
-                                          : isBlocked
-                                            ? 'bg-gray-50 text-gray-800'
-                                            : isAdvanceBooked
-                                              ? 'bg-purple-50 text-purple-800'
-                                              : 'bg-red-50 text-red-800'
-                                        : 'bg-green-50 text-green-800'
-                                    }`}>
+                                    <div className={`text-xs p-2 rounded ${!isAvailableForSelectedDate
+                                      ? isMaintenance
+                                        ? 'bg-yellow-50 text-yellow-800'
+                                        : isBlocked
+                                          ? 'bg-gray-50 text-gray-800'
+                                          : isAdvanceBooked
+                                            ? 'bg-purple-50 text-purple-800'
+                                            : 'bg-red-50 text-red-800'
+                                      : 'bg-green-50 text-green-800'
+                                      }`}>
                                       <div className="flex items-center justify-between">
                                         <span>Status for {selectedDate.toLocaleDateString()}:</span>
                                         <span className="font-bold">
@@ -1955,7 +2481,7 @@ const RoomBooking = () => {
                                               : isBlocked
                                                 ? '🚫 Blocked'
                                                 : isAdvanceBooked
-                                                  ? '🔮 Advance Booked'
+                                                  ? 'Advance Booked'
                                                   : '❌ Booked')
                                             : '✅ Available'}
                                         </span>
@@ -1977,6 +2503,11 @@ const RoomBooking = () => {
                                               .map(booking => (
                                                 <div key={booking.id} className="mt-1">
                                                   <span>{booking.customerName}</span>
+                                                  {booking.groupBookingId && (
+                                                    <Badge className="ml-2 text-[8px] bg-blue-100 text-blue-800">
+                                                      Group
+                                                    </Badge>
+                                                  )}
                                                   {booking.isAdvanceBooking && (
                                                     <span className="ml-2 text-purple-600">
                                                       (Advance: ₹{booking.advanceAmount})
@@ -2036,38 +2567,46 @@ const RoomBooking = () => {
                                     {/* Quick Action Buttons */}
                                     <div className="flex flex-col gap-2 pt-2">
                                       {advanceBooking && userSource === 'database' ? (
-                                        /* Convert to Booking button for advance bookings */
                                         <Button
                                           size="sm"
-                                          onClick={() => {
-                                            setSelectedRoom(room);
-                                            setSelectedAdvanceForBooking(advanceBooking);
-                                            setDateRange({
-                                              from: new Date(advanceBooking.checkIn),
-                                              to: new Date(advanceBooking.checkOut)
-                                            });
-                                            setShowBookingForm(true);
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleConvertAndBook(room, advanceBooking);
                                           }}
                                           className="w-full bg-purple-600 hover:bg-purple-700 text-white"
                                         >
-                                          <ArrowRight className="h-4 w-4 mr-2" />
-                                          Convert to Booking (Advance: ₹{advanceBooking.advanceAmount})
+                                          Convert to Booking (Adv: ₹{advanceBooking.advanceAmount})
                                         </Button>
-                                      ) : (
-                                        /* Regular booking button */
+                                      ) : isBlocked ? (
                                         <Button
                                           size="sm"
-                                          onClick={() => handleQuickAction(room, 'book')}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleUnblockRoom(room, roomBookings.find(b =>
+                                              isDateBooked(selectedDate, b.checkIn, b.checkOut, b) && b.status === 'blocked'
+                                            ));
+                                          }}
+                                          className="w-full bg-green-600 hover:bg-green-700 text-white"
+                                        >
+                                          <RefreshCw className="h-4 w-4 mr-2" />
+                                          Unblock Room
+                                        </Button>
+                                      ) : (
+                                        <Button
+                                          size="sm"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleQuickAction(room, 'book');
+                                          }}
                                           disabled={!isAvailableForSelectedDate}
-                                          className={`w-full ${
-                                            isAvailableForSelectedDate
-                                              ? 'bg-green-600 hover:bg-green-700'
-                                              : 'bg-gray-300 cursor-not-allowed'
-                                          }`}
+                                          className={`w-full ${isAvailableForSelectedDate
+                                            ? 'bg-green-600 hover:bg-green-700'
+                                            : 'bg-gray-300 cursor-not-allowed'
+                                            }`}
                                         >
                                           <FileImage className="h-4 w-4 mr-2" />
-                                          {isAvailableForSelectedDate ? 'Book for This Date' : 
-                                           isAdvanceBooked ? 'Advance Booked' : 'Already Booked'}
+                                          {isAvailableForSelectedDate ? 'Book for This Date' :
+                                            isAdvanceBooked ? 'Advance Booked' : 'Already Booked'}
                                         </Button>
                                       )}
 
@@ -2075,18 +2614,24 @@ const RoomBooking = () => {
                                         <Button
                                           size="sm"
                                           variant="outline"
-                                          onClick={() => handleQuickAction(room, 'block')}
-                                          disabled={!isAvailableForSelectedDate && !advanceBooking}
-                                          className={`flex-1 ${!isAvailableForSelectedDate && !advanceBooking ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleQuickAction(room, 'block');
+                                          }}
+                                          disabled={!isAvailableForSelectedDate && !advanceBooking && !isBlocked}
+                                          className={`flex-1 ${(!isAvailableForSelectedDate && !advanceBooking && !isBlocked) ? 'opacity-50 cursor-not-allowed' : ''}`}
                                         >
                                           Block
                                         </Button>
                                         <Button
                                           size="sm"
                                           variant="outline"
-                                          onClick={() => handleQuickAction(room, 'maintenance')}
-                                          disabled={!isAvailableForSelectedDate && !advanceBooking}
-                                          className={`flex-1 ${!isAvailableForSelectedDate && !advanceBooking ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleQuickAction(room, 'maintenance');
+                                          }}
+                                          disabled={!isAvailableForSelectedDate && !advanceBooking && !isBlocked}
+                                          className={`flex-1 ${(!isAvailableForSelectedDate && !advanceBooking && !isBlocked) ? 'opacity-50 cursor-not-allowed' : ''}`}
                                         >
                                           Maintenance
                                         </Button>
@@ -2097,7 +2642,8 @@ const RoomBooking = () => {
                                           <Button
                                             size="sm"
                                             variant="outline"
-                                            onClick={() => {
+                                            onClick={(e) => {
+                                              e.stopPropagation();
                                               setQuotationRoom(room);
                                               setQuotationDateRange({
                                                 from: selectedDate,
@@ -2106,11 +2652,10 @@ const RoomBooking = () => {
                                               setShowQuotationForm(true);
                                             }}
                                             disabled={!isAvailableForSelectedDate}
-                                            className={`w-full ${
-                                              isAvailableForSelectedDate
-                                                ? 'border-blue-300 text-blue-700 hover:bg-blue-50 hover:text-blue-800'
-                                                : 'opacity-50 cursor-not-allowed'
-                                            }`}
+                                            className={`w-full ${isAvailableForSelectedDate
+                                              ? 'border-blue-300 text-blue-700 hover:bg-blue-50 hover:text-blue-800'
+                                              : 'opacity-50 cursor-not-allowed'
+                                              }`}
                                           >
                                             <FileText className="h-4 w-4 mr-2" />
                                             Create Quotation
@@ -2142,31 +2687,35 @@ const RoomBooking = () => {
                     <CardContent>
                       <div className="space-y-4">
                         {/* Month Selector and Navigation */}
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between gap-2">
                           <Button
                             variant="outline"
                             size="sm"
+                            className="px-2 sm:px-3"
                             onClick={() => {
                               const newDate = new Date(currentMonth);
                               newDate.setMonth(newDate.getMonth() - 1);
                               setCurrentMonth(newDate);
                             }}
                           >
-                            Previous Month
+                            <ChevronLeft className="h-4 w-4 sm:mr-1" />
+                            <span className="hidden sm:inline">Previous</span>
                           </Button>
-                          <h3 className="text-lg font-semibold">
+                          <h3 className="text-base sm:text-lg font-bold text-center flex-1 min-w-0 truncate capitalize">
                             {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
                           </h3>
                           <Button
                             variant="outline"
                             size="sm"
+                            className="px-2 sm:px-3"
                             onClick={() => {
                               const newDate = new Date(currentMonth);
                               newDate.setMonth(newDate.getMonth() + 1);
                               setCurrentMonth(newDate);
                             }}
                           >
-                            Next Month
+                            <span className="hidden sm:inline">Next</span>
+                            <ChevronRight className="h-4 w-4 sm:ml-1" />
                           </Button>
                         </div>
 
@@ -2186,7 +2735,7 @@ const RoomBooking = () => {
                           </div>
                           <div className="flex items-center gap-2">
                             <div className="w-4 h-4 bg-purple-100 border border-purple-300 rounded"></div>
-                            <span>Advance Booked</span>
+                            <span>Advance</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <div className="w-4 h-4 bg-yellow-100 border border-yellow-300 rounded"></div>
@@ -2317,14 +2866,13 @@ const RoomBooking = () => {
                                           setViewMode('grid');
                                           calculateAvailability(date);
                                         }}
-                                        title={`${date.toLocaleDateString()}\n${
-                                          isBooked
-                                            ? (isMaintenance ? 'Maintenance'
-                                              : isBlocked ? 'Blocked'
-                                                : isAdvanceBooked ? 'Advance Booked'
-                                                  : 'Booked')
-                                            : 'Available'
-                                        }`}
+                                        title={`${date.toLocaleDateString()}\n${isBooked
+                                          ? (isMaintenance ? 'Maintenance'
+                                            : isBlocked ? 'Blocked'
+                                              : isAdvanceBooked ? 'Advance Booked'
+                                                : 'Booked')
+                                          : 'Available'
+                                          }`}
                                       >
                                         {isBooked
                                           ? (isMaintenance ? '🔧'
@@ -2402,6 +2950,33 @@ const RoomBooking = () => {
               </CardContent>
             </Card>
 
+            {/* Group Bookings Summary */}
+            {bookings.filter(b => b.groupBookingId).length > 0 && (
+              <Card className="bg-blue-50 border-blue-200">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Badge className="bg-blue-600">Group Bookings</Badge>
+                    <span className="text-sm text-blue-700">
+                      {bookings.filter(b => b.groupBookingId).length} bookings in groups
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {[...new Set(bookings.map(b => b.groupBookingId).filter(Boolean))].map(groupId => (
+                      <Button
+                        key={groupId}
+                        size="sm"
+                        variant="outline"
+                        onClick={() => fetchGroupBookings(groupId!)}
+                        className="bg-white border-blue-300 text-blue-700 hover:bg-blue-100"
+                      >
+                        View Group {groupId?.slice(-6)}
+                      </Button>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Bookings List */}
             {loading ? (
               <div className="flex justify-center items-center py-12">
@@ -2410,23 +2985,28 @@ const RoomBooking = () => {
               </div>
             ) : bookings.length > 0 ? (
               <div className="space-y-4">
-                {filteredBookings.map((booking) => (
+                {paginatedBookings.map((booking) => (
                   <motion.div
                     key={booking.id}
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ duration: 0.3 }}
                   >
-                    <Card className={`hover:shadow-md transition-shadow ${
-                      booking.status === 'maintenance' ? 'border-yellow-200' :
+                    <Card className={`hover:shadow-md transition-shadow ${booking.status === 'maintenance' ? 'border-yellow-200' :
                       booking.status === 'blocked' ? 'border-gray-400' :
-                      booking.isAdvanceBooking ? 'border-purple-200' : ''
-                    }`}>
+                        booking.isAdvanceBooking ? 'border-purple-200' :
+                          booking.groupBookingId ? 'border-blue-200' : ''
+                      }`}>
                       <CardContent className="p-4">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                           <div className="space-y-2 flex-1">
                             <div className="flex items-center gap-3 flex-wrap">
                               <h3 className="font-semibold">Booking #{formatBookingId(booking.id)}</h3>
+                              {booking.groupBookingId && (
+                                <Badge className="bg-blue-100 text-blue-800 border-blue-200">
+                                  Group Booking
+                                </Badge>
+                              )}
                               {getStatusBadge(booking.status, booking.isAdvanceBooking ? 'advance' : undefined)}
                               {getPaymentBadge(booking.paymentStatus)}
                               {booking.isAdvanceBooking && (
@@ -2469,6 +3049,25 @@ const RoomBooking = () => {
                                 </div>
                               )}
                             </div>
+
+                            {/* Group Booking Info */}
+                            {booking.groupBookingId && (
+                              <div className="mt-2 p-2 bg-blue-50 rounded-md">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-sm text-blue-700">
+                                    <span className="font-medium">Group ID:</span> {booking.groupBookingId}
+                                  </span>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => fetchGroupBookings(booking.groupBookingId!)}
+                                    className="h-6 text-xs"
+                                  >
+                                    View Group
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
 
                             {/* Advance Booking Details */}
                             {booking.isAdvanceBooking && (
@@ -2575,6 +3174,46 @@ const RoomBooking = () => {
                     </Card>
                   </motion.div>
                 ))}
+
+                {/* Pagination Controls */}
+                {totalPagesForBookings > 1 && (
+                  <div className="flex items-center justify-between border-t transition-all pt-4 mt-4">
+                    <div className="text-sm text-muted-foreground">
+                      Showing {(bookingPage - 1) * recordsPerPage + 1} to {Math.min(bookingPage * recordsPerPage, filteredBookings.length)} of {filteredBookings.length} bookings
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setBookingPage(prev => Math.max(1, prev - 1))}
+                        disabled={bookingPage === 1}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: totalPagesForBookings }, (_, i) => i + 1).map(page => (
+                          <Button
+                            key={page}
+                            variant={bookingPage === page ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setBookingPage(page)}
+                            className="w-8 h-8 p-0"
+                          >
+                            {page}
+                          </Button>
+                        ))}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setBookingPage(prev => Math.min(totalPagesForBookings, prev + 1))}
+                        disabled={bookingPage === totalPagesForBookings}
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <Card>
@@ -2595,6 +3234,68 @@ const RoomBooking = () => {
         </Tabs>
       </div>
 
+      {/* Group Bookings Modal */}
+      {showGroupBookings && selectedGroupId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto">
+            <div className="p-6 space-y-4">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold">Group Booking Details</h2>
+                <Button variant="ghost" size="sm" onClick={() => setShowGroupBookings(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Badge className="bg-blue-600">Group ID</Badge>
+                  <span className="font-mono">{selectedGroupId}</span>
+                </div>
+
+                <div className="grid gap-4">
+                  {groupBookings.map((booking, index) => (
+                    <Card key={booking.id} className="border-l-4 border-l-blue-500">
+                      <CardContent className="p-4">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <Badge variant="outline">Room {booking.roomNumber}</Badge>
+                              {getStatusBadge(booking.status)}
+                              {getPaymentBadge(booking.paymentStatus)}
+                            </div>
+                            <p className="text-sm">
+                              <span className="font-medium">Customer:</span> {booking.customerName}
+                            </p>
+                            <p className="text-sm">
+                              <span className="font-medium">Check-in:</span> {new Date(booking.checkIn).toLocaleDateString()}
+                            </p>
+                            <p className="text-sm">
+                              <span className="font-medium">Check-out:</span> {new Date(booking.checkOut).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-lg font-bold text-green-600">₹{booking.totalAmount}</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+
+                <div className="border-t pt-4 mt-4">
+                  <div className="flex justify-between items-center text-lg font-bold">
+                    <span>Group Total:</span>
+                    <span className="text-green-600">
+                      ₹{groupBookings.reduce((sum, b) => sum + b.totalAmount, 0).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Booking Form Modal */}
       {showBookingForm && selectedRoom && (
         <BookingForm
@@ -2608,18 +3309,20 @@ const RoomBooking = () => {
           advanceBookingData={selectedAdvanceForBooking}
           isAdvanceConversion={!!selectedAdvanceForBooking}
           onClose={() => {
+            console.log('Closing booking form');
             setShowBookingForm(false);
             setSelectedRoom(null);
             setSelectedAdvanceForBooking(null);
           }}
           onSuccess={async () => {
+            console.log('Booking success, refreshing...');
             setShowBookingForm(false);
             setSelectedRoom(null);
             setSelectedAdvanceForBooking(null);
             await fetchRooms();
             toast({
               title: "Success",
-              description: selectedAdvanceForBooking 
+              description: selectedAdvanceForBooking
                 ? `Advance booking converted to regular booking for Room ${selectedRoom.number}`
                 : `Room ${selectedRoom.number} ${bookingMode === 'book' ? 'booked' : bookingMode === 'block' ? 'blocked' : 'set for maintenance'} successfully`
             });
@@ -2670,6 +3373,24 @@ const RoomBooking = () => {
           }}
           userSource={userSource}
           spreadsheetId={currentUser.spreadsheetId}
+        />
+      )}
+
+      {/* Multi-Room Booking Modal */}
+      {showMultiBookingForm && (
+        <MultiRoomBookingForm
+          open={showMultiBookingForm}
+          onClose={() => {
+            setShowMultiBookingForm(false);
+            setSelectedRoomsForMulti([]);
+            setMultiSelectMode(false);
+            setSelectAll(false);
+          }}
+          onSuccess={handleMultiBookingSuccess}
+          selectedRooms={selectedRoomsForMulti}
+          userSource={userSource}
+          spreadsheetId={currentUser?.spreadsheetId}
+          defaultDate={new Date(selectedDate.getTime() + 24 * 60 * 60 * 1000)}
         />
       )}
 
@@ -2773,6 +3494,17 @@ const RoomBooking = () => {
                   </div>
                 )}
               </div>
+
+              {/* Group Booking Info */}
+              {selectedBooking.groupBookingId && (
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <h3 className="font-semibold text-blue-800 mb-2">Group Booking Details</h3>
+                  <div>
+                    <span className="text-sm text-blue-600">Group ID:</span>
+                    <div className="font-medium font-mono">{selectedBooking.groupBookingId}</div>
+                  </div>
+                </div>
+              )}
 
               {/* Advance Booking Details */}
               {selectedBooking.isAdvanceBooking && (
@@ -2892,6 +3624,7 @@ const RoomBooking = () => {
         </div>
       )}
 
+      {/* Quotation Form Modal */}
       {showQuotationForm && quotationRoom && (
         <QuotationForm
           open={showQuotationForm}
@@ -2919,6 +3652,22 @@ const RoomBooking = () => {
           }}
         />
       )}
+
+      {/* Add Room Modal */}
+      <AddRoomModal
+        open={showAddRoomModal}
+        onClose={() => setShowAddRoomModal(false)}
+        spreadsheetId={currentUser?.spreadsheetId || ''}
+        userSource={userSource}
+        onRoomAdded={async () => {
+          await fetchRooms();
+          toast({
+            title: "Success",
+            description: "Rooms added successfully. Refreshing data...",
+          });
+        }}
+        roomType="standard"
+      />
     </Layout>
   );
 };

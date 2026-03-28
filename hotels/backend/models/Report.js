@@ -488,33 +488,53 @@ class Report {
     return { bookings, advanceBookings, functionBookings };
   }
 
+  // Get Check-in/Check-out report (Combined Rooms + Functions)
   static async getCheckInCheckOut(hotelId, startDate, endDate) {
     const query = `
-      SELECT 
-        b.from_date as check_in_date,
-        b.to_date as check_out_date,
-        r.room_number,
-        c.name as customer_name,
-        c.phone as mobile_no,
-        b.guests as no_of_persons,
-        b.amount as room_cost,
-        b.gst,
-        b.total
-      FROM bookings b
-      JOIN rooms r ON b.room_id = r.id
-      LEFT JOIN customers c ON b.customer_id = c.id
-      WHERE b.hotel_id = ?
-        AND b.status = 'booked'
-        AND ((b.from_date BETWEEN ? AND ?) OR (b.to_date BETWEEN ? AND ?))
-      ORDER BY b.from_date
+      (
+        SELECT 
+          b.from_date as check_in_date,
+          b.to_date as check_out_date,
+          r.room_number,
+          c.name as customer_name,
+          c.phone as mobile_no,
+          b.guests as no_of_persons,
+          b.amount as room_cost,
+          b.gst,
+          b.total,
+          'Room' as booking_type
+        FROM bookings b
+        JOIN rooms r ON b.room_id = r.id
+        LEFT JOIN customers c ON b.customer_id = c.id
+        WHERE b.hotel_id = ?
+          AND b.status = 'booked'
+          AND ((b.from_date BETWEEN ? AND ?) OR (b.to_date BETWEEN ? AND ?))
+      )
+      UNION ALL
+      (
+        SELECT 
+          fb.booking_date as check_in_date,
+          fb.booking_date as check_out_date,
+          CONCAT(fr.room_number, ' (Hall)') as room_number,
+          fb.customer_name,
+          fb.customer_phone as mobile_no,
+          fb.guests_expected as no_of_persons,
+          fb.total_amount as room_cost,
+          COALESCE(fb.gst, 0) as gst,
+          fb.total_amount as total,
+          'Function Hall' as booking_type
+        FROM function_bookings fb
+        JOIN function_rooms fr ON fb.function_room_id = fr.id
+        WHERE fb.hotel_id = ?
+          AND fb.status IN ('confirmed', 'completed')
+          AND fb.booking_date BETWEEN ? AND ?
+      )
+      ORDER BY check_in_date ASC
     `;
 
     const [rows] = await pool.execute(query, [
-      hotelId,
-      startDate,
-      endDate,
-      startDate,
-      endDate,
+      hotelId, startDate, endDate, startDate, endDate,
+      hotelId, startDate, endDate
     ]);
     return rows;
   }
@@ -626,166 +646,147 @@ class Report {
         (s.salary_month IS NOT NULL AND s.salary_month != '0000-00-00' 
           AND YEAR(s.salary_month) = ? AND MONTH(s.salary_month) = ?)
         OR 
-        (s.salary_month IS NULL OR s.salary_month = '0000-00-00')
+        ((s.salary_month IS NULL OR s.salary_month = '0000-00-00') 
+          AND YEAR(s.payment_date) = ? AND MONTH(s.payment_date) = ?)
       )
     ORDER BY s.payment_date DESC, s.created_at DESC
   `;
 
-    const [rows] = await pool.execute(query, [hotelId, year, month]);
+    const [rows] = await pool.execute(query, [hotelId, year, month, year, month]);
     return rows;
   }
 
-  // Generate P&L Summary Report - CORRECTED VERSION
-  // Revenue = Cash bookings (bookings table) + Online payments (transactions table)
+  // Generate P&L Summary Report - UNIFIED VERSION (Combined Cash/Online)
   static async getPnLSummary(hotelId, startDate, endDate) {
-    // Calculate date range boundaries
     const start = new Date(startDate);
     const end = new Date(endDate);
     const startMonth = new Date(start.getFullYear(), start.getMonth(), 1);
     const endMonth = new Date(end.getFullYear(), end.getMonth() + 1, 0);
 
-    // ── CASH Revenue: from collections table (ACTUAL cash received) ──────────
-    // collections table = real cash collected by staff (auto-created on cash booking)
-    // bookings.total = what was BILLED (not necessarily collected in full)
-    const [cashRevRows] = await pool.execute(
-      `
-      SELECT 
-        DATE_FORMAT(collection_date, '%Y-%m') as month,
-        SUM(amount) as total_revenue
-      FROM collections
-      WHERE hotel_id = ?
-        AND payment_mode = 'cash'
-        AND DATE(collection_date) BETWEEN ? AND ?
-      GROUP BY DATE_FORMAT(collection_date, '%Y-%m')
-    `,
-      [
-        hotelId,
-        startMonth.toISOString().split("T")[0],
-        endMonth.toISOString().split("T")[0],
-      ],
-    );
+    const startStr = startMonth.toISOString().split("T")[0];
+    const endStr = endMonth.toISOString().split("T")[0];
 
-    // ── ONLINE Revenue: from transactions table ────────────────────────────
-    const [onlineRevRows] = await pool.execute(
-      `
+    // ── 1. Unified Monthly CASH Revenue ─────────────────────────────────────
+    const [cashRevRows] = await pool.execute(`
       SELECT 
-        DATE_FORMAT(t.created_at, '%Y-%m') as month,
-        SUM(t.amount) as total_revenue
-      FROM transactions t
-      WHERE t.hotel_id = ?
-        AND t.status = 'success'
-        AND t.booking_id IS NOT NULL
-        AND DATE(t.created_at) BETWEEN ? AND ?
-      GROUP BY DATE_FORMAT(t.created_at, '%Y-%m')
-    `,
-      [
-        hotelId,
-        startMonth.toISOString().split("T")[0],
-        endMonth.toISOString().split("T")[0],
-      ],
-    );
+       DATE_FORMAT(cash_date, '%Y-%m') as month,
+       SUM(cash_amount) AS total_amount
+        FROM (
+            -- Advance Bookings
+            SELECT DATE(created_at) as cash_date, advance_amount as cash_amount 
+            FROM advance_bookings
+            WHERE hotel_id = ? AND payment_method = 'cash'
+           
+            UNION ALL
 
-    // ── FUNCTION HALL Revenue: from function_bookings table ─────────────────
-    // Function bookings revenue (advance_paid is the collected amount)
-    const [functionRevRows] = await pool.execute(
-      `
+            -- Collections
+            SELECT collection_date as cash_date, amount as cash_amount 
+            FROM collections
+            WHERE hotel_id = ? AND payment_mode = 'cash'
+
+            UNION ALL
+
+            -- Function Booking Amounts (Transaction Amount)
+            SELECT DATE(created_at) as cash_date, transaction_amount as cash_amount 
+            FROM function_booking_amounts
+            WHERE hotel_id = ? AND payment_method = 'cash'
+
+            UNION ALL
+
+            -- Function Booking Refunds (Subtracting Refund Amount)
+            SELECT DATE(created_at) as cash_date, -refund_amount as cash_amount 
+            FROM booking_refunds
+            WHERE hotel_id = ? AND refund_method = 'cash' AND refund_status = 'completed'
+        ) AS cash_summary
+        WHERE cash_date BETWEEN ? AND ?
+        GROUP BY month
+    `, [hotelId, hotelId, hotelId, hotelId, startStr, endStr]);
+
+    // ── 2. Unified Monthly ONLINE Revenue ───────────────────────────────────
+    const [onlineRevRows] = await pool.execute(`
       SELECT 
-        DATE_FORMAT(created_at, '%Y-%m') as month,
-        SUM(advance_paid) as total_revenue
-      FROM function_bookings
-      WHERE hotel_id = ?
-        AND advance_paid > 0
-        AND DATE(created_at) BETWEEN ? AND ?
-      GROUP BY DATE_FORMAT(created_at, '%Y-%m')
-    `,
-      [
-        hotelId,
-        startMonth.toISOString().split("T")[0],
-        endMonth.toISOString().split("T")[0],
-      ],
-    );
+        DATE_FORMAT(online_date, '%Y-%m') as month,
+        SUM(online_amount) as total_amount
+      FROM (
+          -- Transactions (Gateway)
+          SELECT DATE(created_at) as online_date, amount as online_amount 
+          FROM transactions WHERE hotel_id = ? AND payment_method <> 'cash'
+          
+          UNION ALL
 
-    // ── Expenses ─────────────────────────────────────────────────────────
-    const [expRows] = await pool.execute(
-      `
+          -- Function Payments (Online)
+          SELECT DATE(created_at) as online_date, transaction_amount as online_amount 
+          FROM function_booking_amounts WHERE hotel_id = ? AND payment_method = 'online'
+
+          UNION ALL
+
+          -- Refunds (Online - Negative)
+          SELECT DATE(created_at) as online_date, -refund_amount as online_amount 
+          FROM booking_refunds 
+          WHERE hotel_id = ? AND refund_method = 'online' AND refund_status = 'completed'
+      ) AS online_summary
+      WHERE online_date BETWEEN ? AND ?
+      GROUP BY month
+    `, [hotelId, hotelId, hotelId, startStr, endStr]);
+
+    // ── 3. Expenses ─────────────────────────────────────────────────────────
+    const [expRows] = await pool.execute(`
       SELECT 
-        DATE_FORMAT(e.expense_date, '%Y-%m') as month,
-        SUM(e.amount) as total_expenses
-      FROM expenses e
-      WHERE e.hotel_id = ?
-        AND e.expense_date BETWEEN ? AND ?
-      GROUP BY DATE_FORMAT(e.expense_date, '%Y-%m')
-    `,
-      [hotelId, startMonth, endMonth],
-    );
+        DATE_FORMAT(expense_date, '%Y-%m') as month,
+        SUM(amount) as total_expenses
+      FROM expenses
+      WHERE hotel_id = ? AND expense_date BETWEEN ? AND ?
+      GROUP BY month
+    `, [hotelId, startStr, endStr]);
 
-    // ── Salaries ─────────────────────────────────────────────────────────
-    const [salRows] = await pool.execute(
-      `
+    // ── 4. Salaries ─────────────────────────────────────────────────────────
+    const [salRows] = await pool.execute(`
       SELECT 
-        DATE_FORMAT(s.salary_month, '%Y-%m') as month,
-        SUM(s.net_salary) as total_salaries
-      FROM salaries s
-      WHERE s.hotel_id = ?
-        AND s.salary_month BETWEEN ? AND ?
-      GROUP BY DATE_FORMAT(s.salary_month, '%Y-%m')
-    `,
-      [hotelId, startMonth, endMonth],
-    );
+        DATE_FORMAT(CASE 
+          WHEN salary_month IS NOT NULL AND salary_month != '0000-00-00' THEN salary_month 
+          ELSE payment_date 
+        END, '%Y-%m') as month,
+        SUM(net_salary) as total_salaries
+      FROM salaries
+      WHERE hotel_id = ? AND (
+        (salary_month IS NOT NULL AND salary_month != '0000-00-00' AND salary_month BETWEEN ? AND ?)
+        OR 
+        ((salary_month IS NULL OR salary_month = '0000-00-00') AND payment_date BETWEEN ? AND ?)
+      )
+      GROUP BY month
+    `, [hotelId, startStr, endStr, startStr, endStr]);
 
-    // Build month range between startMonth and endMonth
+    // Build month range list
     const months = [];
-    const cursor = new Date(startMonth);
+    let cursor = new Date(startMonth);
     while (cursor <= endMonth) {
-      months.push(
-        `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`,
-      );
+      months.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`);
       cursor.setMonth(cursor.getMonth() + 1);
     }
 
-    // Merge revenue maps (cash + online per month)
-    const cashRevMap = {};
-    cashRevRows.forEach((r) => {
-      cashRevMap[r.month] = parseFloat(r.total_revenue) || 0;
-    });
-    const onlineRevMap = {};
-    onlineRevRows.forEach((r) => {
-      onlineRevMap[r.month] = parseFloat(r.total_revenue) || 0;
-    });
-    const functionRevMap = {};
-    functionRevRows.forEach((r) => {
-      functionRevMap[r.month] = parseFloat(r.total_revenue) || 0;
-    });
-    const expMap = {};
-    expRows.forEach((r) => {
-      expMap[r.month] = parseFloat(r.total_expenses) || 0;
-    });
-    const salMap = {};
-    salRows.forEach((r) => {
-      salMap[r.month] = parseFloat(r.total_salaries) || 0;
-    });
+    // Helper maps
+    const cashMap = Object.fromEntries(cashRevRows.map(r => [r.month, parseFloat(r.total_amount) || 0]));
+    const onlineMap = Object.fromEntries(onlineRevRows.map(r => [r.month, parseFloat(r.total_amount) || 0]));
+    const expMap = Object.fromEntries(expRows.map(r => [r.month, parseFloat(r.total_expenses) || 0]));
+    const salMap = Object.fromEntries(salRows.map(r => [r.month, parseFloat(r.total_salaries) || 0]));
 
-    // Build result rows per month (sorted descending)
-    const rows = months.reverse().map((month) => {
-      const cashRev = cashRevMap[month] || 0;
-      const onlineRev = onlineRevMap[month] || 0;
-      const functionRev = functionRevMap[month] || 0;
-      const totalRevenue = cashRev + onlineRev + functionRev;
+    return months.reverse().map(month => {
+      const cash = cashMap[month] || 0;
+      const online = onlineMap[month] || 0;
+      const totalRevenue = cash + online;
       const totalExpenses = expMap[month] || 0;
       const totalSalaries = salMap[month] || 0;
+
       return {
         month,
-        cash_revenue: cashRev,
-        online_revenue: onlineRev,
-        function_revenue: functionRev,
-        total_revenue: totalRevenue,
+        cash_revenue: cash,
+        online_revenue: online,
+        total_amount: totalRevenue,
         total_expenses: totalExpenses,
         total_salaries: totalSalaries,
-        net_profit: totalRevenue - totalExpenses - totalSalaries,
+        net_profit: totalRevenue - totalExpenses - totalSalaries
       };
     });
-
-    return rows;
   }
 
   // static async getReportSummary(hotelId, startDate, endDate) {
@@ -1565,7 +1566,8 @@ class Report {
 
   // Get Function Room Summary
   static async getFunctionRoomSummary(hotelId, startDate, endDate) {
-    const query = `
+    // Current Summary from bookings
+    const summaryQuery = `
     SELECT 
       COUNT(*) as total_bookings,
       SUM(CASE WHEN fb.status = 'confirmed' THEN 1 ELSE 0 END) as confirmed_bookings,
@@ -1573,7 +1575,6 @@ class Report {
       SUM(CASE WHEN fb.status = 'pending' THEN 1 ELSE 0 END) as pending_bookings,
       SUM(CASE WHEN fb.status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_bookings,
       SUM(fb.total_amount) as total_revenue,
-      SUM(fb.advance_paid) as total_advance,
       SUM(fb.balance_due) as total_balance,
       SUM(fb.catering_charges) as total_catering,
       SUM(fb.decoration_charges) as total_decoration,
@@ -1583,10 +1584,30 @@ class Report {
     WHERE fb.hotel_id = ?
       AND DATE(fb.booking_date) BETWEEN ? AND ?
       AND fb.status != 'cancelled'
-  `;
+    `;
 
-    const [rows] = await pool.execute(query, [hotelId, startDate, endDate]);
-    return rows[0] || {};
+    // Revenue/Paid Amount from transactions for the period (Requested Logic)
+    const paidQuery = `
+      SELECT (
+        (SELECT COALESCE(SUM(transaction_amount), 0) FROM function_booking_amounts 
+         WHERE hotel_id = ? AND DATE(created_at) BETWEEN ? AND ?)
+        -
+        (SELECT COALESCE(SUM(refund_amount), 0) FROM booking_refunds 
+         WHERE hotel_id = ? AND refund_status = 'completed' AND DATE(created_at) BETWEEN ? AND ?
+         AND booking_type = 'function')
+      ) as total_paid
+    `;
+
+    const [summaryResult] = await pool.execute(summaryQuery, [hotelId, startDate, endDate]);
+    const [paidResult] = await pool.execute(paidQuery, [hotelId, startDate, endDate, hotelId, startDate, endDate]);
+
+    const summary = summaryResult[0] || {};
+    const totalPaid = paidResult[0]?.total_paid || 0;
+
+    return {
+      ...summary,
+      total_advance: totalPaid
+    };
   }
 
   // Get Function Room Occupancy
@@ -1649,66 +1670,100 @@ class Report {
         [endDate, hotelId],
       );
 
-      // ─────────────────────────────────────────────────────────────────
-      // CASH collections: from bookings table (payment_method = 'cash')
-      // Uses created_at (booking date) NOT from_date (check-in date)
-      // so bookings made today for future check-in ARE included.
-      // ─────────────────────────────────────────────────────────────────
-      const [cashCollections] = await pool.execute(
-        `
-        SELECT 
-          SUM(b.total) as total_amount
-        FROM bookings b
-        WHERE b.hotel_id = ?
-          AND b.status = 'booked'
-          AND b.payment_method = 'cash'
-          AND DATE(b.created_at) BETWEEN ? AND ?
-        `,
-        [hotelId, startDate, endDate],
-      );
+      // ── 1. UNIFIED CASH REVENUE ──────────────────────────────────────────
+      const [cashResult] = await pool.execute(`
+        SELECT SUM(cash_amount) as total_amount FROM (
+          -- Advance Bookings
+          SELECT COALESCE(SUM(advance_amount), 0) as cash_amount FROM advance_bookings 
+          WHERE hotel_id = ? AND payment_method = 'cash'
+          AND DATE(created_at) BETWEEN ? AND ?
 
-      // ─────────────────────────────────────────────────────────────────
-      // ONLINE collections: from transactions table (status = 'success')
-      // Online payments are stored in transactions table, NOT bookings table.
-      // booking_id IS NOT NULL ensures it's a room booking (not advance booking).
-      // ─────────────────────────────────────────────────────────────────
-      const [onlineTransactions] = await pool.execute(
-        `
-        SELECT 
-          SUM(t.amount) as total_amount
-        FROM transactions t
-        WHERE t.hotel_id = ?
-          AND t.status = 'success'
-          AND t.booking_id IS NOT NULL
-          AND DATE(t.created_at) BETWEEN ? AND ?
-        `,
-        [hotelId, startDate, endDate],
-      );
+          UNION ALL
 
-      // Build roomCollections in the same format the rest of code expects
-      const roomCashAmount = parseFloat(cashCollections[0]?.total_amount) || 0;
-      const roomOnlineAmount =
-        parseFloat(onlineTransactions[0]?.total_amount) || 0;
-      const roomCollections = [
-        { payment_method: "cash", total_amount: roomCashAmount },
-        { payment_method: "online", total_amount: roomOnlineAmount },
-      ];
+          -- Collections
+          SELECT COALESCE(SUM(amount), 0) as cash_amount FROM collections 
+          WHERE hotel_id = ? AND payment_mode = 'cash'
+          AND collection_date BETWEEN ? AND ?
 
-      // Get function booking collections
-      const [functionCollections] = await pool.execute(
-        `
-      SELECT 
-        fb.payment_method,
-        SUM(fb.total_amount) as total_amount
-      FROM function_bookings fb
-      WHERE fb.hotel_id = ?
-        AND fb.status IN ('confirmed', 'completed')
-        AND DATE(fb.booking_date) BETWEEN ? AND ?
-        AND fb.payment_method IN ('cash', 'online')
-      GROUP BY fb.payment_method
-    `,
-        [hotelId, startDate, endDate],
-      );
+          UNION ALL
+
+          -- Function Hall Payments
+          SELECT COALESCE(SUM(transaction_amount), 0) as cash_amount FROM function_booking_amounts 
+          WHERE hotel_id = ? AND payment_method = 'cash' 
+          AND DATE(created_at) BETWEEN ? AND ?
+
+          UNION ALL
+
+          -- Refunds (Negative)
+          SELECT -COALESCE(SUM(refund_amount), 0) as cash_amount FROM booking_refunds 
+          WHERE hotel_id = ? AND refund_method = 'cash' AND refund_status = 'completed'
+          AND DATE(created_at) BETWEEN ? AND ?
+        ) as total_cash
+      `, [hotelId, startDate, endDate, hotelId, startDate, endDate, hotelId, startDate, endDate, hotelId, startDate, endDate]);
+
+      // ── 2. UNIFIED ONLINE REVENUE ────────────────────────────────────────
+      const [onlineResult] = await pool.execute(`
+        SELECT SUM(online_amount) as total_amount FROM (
+          -- Transactions (Room/Advance via Gateway)
+          SELECT COALESCE(SUM(amount), 0) as online_amount FROM transactions 
+          WHERE hotel_id = ? AND payment_method <> 'cash' AND status = 'success'
+          AND DATE(created_at) BETWEEN ? AND ?
+
+          UNION ALL
+
+          -- Function Hall Payments (Online)
+          SELECT transaction_amount as amount FROM function_booking_amounts 
+          WHERE hotel_id = ? AND payment_method = 'online' 
+          AND transaction_type IN ('advance', 'payment', 'final_payment')
+          AND DATE(created_at) BETWEEN ? AND ?
+
+          UNION ALL
+
+          -- Refunds (Negative)
+          SELECT -refund_amount as amount FROM booking_refunds 
+          WHERE hotel_id = ? AND refund_method = 'online' AND refund_status = 'completed'
+          AND DATE(created_at) BETWEEN ? AND ?
+        ) as total_online
+      `, [hotelId, startDate, endDate, hotelId, startDate, endDate, hotelId, startDate, endDate]);
+
+      const cashCollection = parseFloat(cashResult[0]?.total_amount) || 0;
+      const onlineCollection = parseFloat(onlineResult[0]?.total_amount) || 0;
+
+      // ── 3. CATEGORIZED REVENUE (For Breakdown) ──────────────────────────
+      // This part helps populate room_collections and function_collections in the response
+      const [roomRevResult] = await pool.execute(`
+        SELECT SUM(amount) as total_amount, payment_mode FROM (
+           SELECT amount, 'cash' as payment_mode FROM collections WHERE hotel_id = ? AND payment_mode = 'cash' AND collection_date BETWEEN ? AND ?
+           UNION ALL
+           SELECT COALESCE(SUM(advance_amount), 0) as amount, 'cash' as payment_mode FROM advance_bookings WHERE hotel_id = ? AND payment_method = 'cash' AND DATE(created_at) BETWEEN ? AND ?
+           UNION ALL
+           SELECT amount, 'online' FROM transactions WHERE hotel_id = ? AND payment_method <> 'cash' AND status = 'success' AND DATE(created_at) BETWEEN ? AND ?
+        ) as room_rev GROUP BY payment_mode
+      `, [hotelId, startDate, endDate, hotelId, startDate, endDate, hotelId, startDate, endDate]);
+
+      const [funcRevResult] = await pool.execute(`
+        SELECT SUM(amount) as total_amount, payment_mode FROM (
+           SELECT transaction_amount as amount, payment_method as payment_mode FROM function_booking_amounts 
+           WHERE hotel_id = ? AND transaction_type IN ('advance', 'payment', 'final_payment') AND DATE(created_at) BETWEEN ? AND ?
+           UNION ALL
+           -- Subtracting all refunds (unified logic)
+           SELECT -COALESCE(SUM(refund_amount), 0), refund_method FROM booking_refunds 
+           WHERE hotel_id = ? AND refund_status = 'completed' AND DATE(created_at) BETWEEN ? AND ?
+           GROUP BY refund_method
+        ) as func_rev GROUP BY payment_mode
+      `, [hotelId, startDate, endDate, hotelId, startDate, endDate]);
+
+      let roomCash = 0, roomOnline = 0;
+      roomRevResult.forEach(r => {
+        if (r.payment_mode === 'cash') roomCash = parseFloat(r.total_amount) || 0;
+        else roomOnline = parseFloat(r.total_amount) || 0;
+      });
+
+      let functionCash = 0, functionOnline = 0;
+      funcRevResult.forEach(r => {
+        if (r.payment_mode === 'cash') functionCash = parseFloat(r.total_amount) || 0;
+        else if (r.payment_mode === 'online') functionOnline = parseFloat(r.total_amount) || 0;
+      });
 
       // Get expenses for date range
       const [expenses] = await pool.execute(
@@ -1738,32 +1793,8 @@ class Report {
         [hotelId, startDate, endDate, startDate, endDate],
       );
 
-      // Process room collections
-      let roomCash = 0,
-        roomOnline = 0;
-      roomCollections.forEach((row) => {
-        if (row.payment_method === "cash")
-          roomCash = parseFloat(row.total_amount) || 0;
-        else if (row.payment_method === "online")
-          roomOnline = parseFloat(row.total_amount) || 0;
-      });
-
-      // Process function collections
-      let functionCash = 0,
-        functionOnline = 0;
-      functionCollections.forEach((row) => {
-        if (row.payment_method === "cash")
-          functionCash = parseFloat(row.total_amount) || 0;
-        else if (row.payment_method === "online")
-          functionOnline = parseFloat(row.total_amount) || 0;
-      });
-
-      // Calculate totals
       const roomTotal = roomCash + roomOnline;
       const functionTotal = functionCash + functionOnline;
-
-      const cashCollection = roomCash + functionCash;
-      const onlineCollection = roomOnline + functionOnline;
       const totalCollection = cashCollection + onlineCollection;
 
       const expensesTotal = parseFloat(expenses[0]?.total) || 0;
